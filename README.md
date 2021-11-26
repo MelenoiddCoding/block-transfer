@@ -1,4 +1,4 @@
-# block-transfer
+# Block-transfer
 Transfer Aplication Running on Near Testnet
 
 Sign in with NEAR and send NEAR 
