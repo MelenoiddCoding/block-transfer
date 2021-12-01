@@ -16,9 +16,9 @@ const SendTokens = props => {
     const sendGift=async()=>{
         let getState=await window.account.state();
         let getAmount = await window.utils.format.formatNearAmount(getState.amount)
-        let enteredValue = ValueInput.current.valuesSent
+        let enteredValue = ValueInput.current.value
 
-        if(Number(getAmount)<Number(enteredValue)){
+        if(Number(getAmount)>Number(enteredValue)){
             await window.account.sendMoney(Recipient.current.value, window.utils.format.parseNearAmount(enteredValue))
             .then(
                 await window.contract.addFunds({recipient:Recipient.current.value, amount:Number(enteredValue)})
@@ -45,6 +45,7 @@ const SendTokens = props => {
             let Data = await window.account.state()
             changeBalance(Data.amount)
         }
+        getData();
     },[balance])
 
     //Load
