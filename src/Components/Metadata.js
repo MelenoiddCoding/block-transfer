@@ -9,7 +9,7 @@ const [metadata, changeMetaData]=useState({})
 
 useEffect(()=>{
     async function getData(){
-        let Data= await window.account.state()
+        let Data = await window.account.state()
         console.log(Data)
         changeMetaData(
             Data
