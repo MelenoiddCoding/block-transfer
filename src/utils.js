@@ -35,6 +35,7 @@ export function logout() {
 }
 
 export function login() {
+  //frys comment check git
   // Allow the current app to make calls to the specified contract on the
   // user's behalf.
   // This works by creating a new access key for the user's account and storing
