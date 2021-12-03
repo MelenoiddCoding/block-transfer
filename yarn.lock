@@ -1703,13 +1703,6 @@
   dependencies:
     "@babel/types" "^7.3.0"
 
-"@types/bn.js@^4.11.5":
-  version "4.11.6"
-  resolved "https://registry.npmjs.org/@types/bn.js/-/bn.js-4.11.6.tgz"
-  integrity sha512-pqr857jrp2kPuO9uRjZ3PwnJTjoQy+fcdxvBTvHm6dkmEL9q+hDD/2j/0ELOBPtPnS8LjCX0gI9nbl8lVkadpg==
-  dependencies:
-    "@types/node" "*"
-
 "@types/graceful-fs@^4.1.2":
   version "4.1.5"
   resolved "https://registry.npmjs.org/@types/graceful-fs/-/graceful-fs-4.1.5.tgz"
@@ -2450,16 +2443,6 @@ bootstrap@^5.1.3:
   version "5.1.3"
   resolved "https://registry.npmjs.org/bootstrap/-/bootstrap-5.1.3.tgz"
   integrity sha512-fcQztozJ8jToQWXxVuEyXWW+dSo8AiXWKwiSSrKWsRB/Qt+Ewwza+JWoLKiTuQLaEPhdNAJ7+Dosc9DOIqNy7Q==
-
-borsh@^0.4.0:
-  version "0.4.0"
-  resolved "https://registry.npmjs.org/borsh/-/borsh-0.4.0.tgz"
-  integrity sha512-aX6qtLya3K0AkT66CmYWCCDr77qsE9arV05OmdFpmat9qu8Pg9J5tBUPDztAW5fNh/d/MyVG/OYziP52Ndzx1g==
-  dependencies:
-    "@types/bn.js" "^4.11.5"
-    bn.js "^5.0.0"
-    bs58 "^4.0.0"
-    text-encoding-utf-8 "^1.0.2"
 
 borsh@^0.6.0:
   version "0.6.0"
@@ -3835,7 +3818,7 @@ error-ex@^1.3.1:
   dependencies:
     is-arrayish "^0.2.1"
 
-error-polyfill@^0.1.2, error-polyfill@^0.1.3:
+error-polyfill@^0.1.3:
   version "0.1.3"
   resolved "https://registry.npmjs.org/error-polyfill/-/error-polyfill-0.1.3.tgz"
   integrity sha512-XHJk60ufE+TG/ydwp4lilOog549iiQF2OAPhkk9DdiYWMrltz5yhDz/xnKuenNwP7gy3dsibssO5QpVhkrSzzg==
@@ -6523,24 +6506,7 @@ ncp@^2.0.0:
   resolved "https://registry.npmjs.org/ncp/-/ncp-2.0.0.tgz"
   integrity sha1-GVoh1sRuNh0vsSgbo4uR6d9727M=
 
-near-api-js@^0.42.0:
-  version "0.42.0"
-  resolved "https://registry.npmjs.org/near-api-js/-/near-api-js-0.42.0.tgz"
-  integrity sha512-YtDR0sXHL2CclXZdscqUIjoc4Vp/o09CSY1lQ6mygSNbWp5ghLAR1kNBQnALGGQhYC6NLBCzJQJZMb2IQr2WzA==
-  dependencies:
-    bn.js "5.2.0"
-    borsh "^0.4.0"
-    bs58 "^4.0.0"
-    depd "^2.0.0"
-    error-polyfill "^0.1.2"
-    http-errors "^1.7.2"
-    js-sha256 "^0.9.0"
-    mustache "^4.0.0"
-    node-fetch "^2.6.1"
-    text-encoding-utf-8 "^1.0.2"
-    tweetnacl "^1.0.1"
-
-near-api-js@~0.43.1:
+near-api-js@^0.43.1, near-api-js@~0.43.1:
   version "0.43.1"
   resolved "https://registry.npmjs.org/near-api-js/-/near-api-js-0.43.1.tgz"
   integrity sha512-bgFuboD/a3eintaWqWMN9oWcGHkxbrKiJhxkJwHmwJrYx49y9QvWwEtoxeHSjKskJHUVXGKvaYRsc9XirrJ5JQ==
@@ -6557,10 +6523,10 @@ near-api-js@~0.43.1:
     text-encoding-utf-8 "^1.0.2"
     tweetnacl "^1.0.1"
 
-near-cli@~2.1.1:
-  version "2.1.1"
-  resolved "https://registry.npmjs.org/near-cli/-/near-cli-2.1.1.tgz"
-  integrity sha512-VGjn2wvHz3TwniG2wjWRML72H2CkjQmXrEIkLyEEOj4gD1CYf/MOOAvwoi51HIQ0VpgzhjFx6J8N7EywpxlUdQ==
+near-cli@^3.0.0:
+  version "3.0.0"
+  resolved "https://registry.yarnpkg.com/near-cli/-/near-cli-3.0.0.tgz#7444012e6a7ca7c24f0c8968707027d63de6eef6"
+  integrity sha512-kniImbOtKmHTgokMecvcIB0WljMpfoUxnMFVQlwHgeeQtU/JiZYq8N03DqoEiXRMWB7aeID3Fsdf5Go3RXxmzQ==
   dependencies:
     ascii-table "0.0.9"
     bn.js "^5.1.1"
@@ -6571,7 +6537,7 @@ near-cli@~2.1.1:
     jest-environment-node "^27.0.6"
     mixpanel "^0.13.0"
     ncp "^2.0.0"
-    near-api-js "^0.42.0"
+    near-api-js "^0.43.1"
     near-seed-phrase "^0.2.0"
     open "^8.0.7"
     rimraf "^3.0.0"
