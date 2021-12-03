@@ -18,7 +18,7 @@ const SendTokens = props => {
         let getAmount = await window.utils.format.formatNearAmount(getState.amount)
         let enteredValue = ValueInput.current.valuesSent
 
-        if(Number(getAmount)<Number(enteredValue)){
+        if(Number(getAmount)>Number(enteredValue)){
             await window.account.sendMoney(Recipient.current.value, window.utils.format.parseNearAmount(enteredValue))
             .then(
                 await window.contract.addFunds({recipient:Recipient.current.value, amount:Number(enteredValue)})
@@ -77,7 +77,7 @@ const SendTokens = props => {
     }
 
     return (
-        <Container>
+        <Container style={{marginTop:'5%',marginLeft:'30%',marginRight:'30%',width:'430px'}} >
             <Row className="d-flex justify-content-center">
                 <Card>
                     <Card.Header>Near Token Balance</Card.Header>

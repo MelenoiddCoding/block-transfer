@@ -17,7 +17,7 @@ const { networkId } = getConfig(process.env.NODE_ENV || 'development')
 export default function App() {
   return(
     <React.Fragment>
-    <Navbar collapseOnSelect expand="lg" bg="muted" variant="primary">
+    <Navbar collapseOnSelect expand="lg"  bg="dark" variant="dark">
     <Container>
     <Navbar.Brand >Block-Transfer</Navbar.Brand>
     <Navbar.Toggle aria-controls="responsive-navbar-nav" />

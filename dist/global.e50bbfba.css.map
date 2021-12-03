@@ -1,0 +1,1 @@
+{"version":3,"sources":["global.css"],"names":[],"mappings":"AAAA;EACE,SAAS;EACT,UAAU;AACZ;;AAEA;EACE,4DAAuC;EACvC,qBAAqB;AACvB","file":"global.e50bbfba.css","sourceRoot":"..\\src","sourcesContent":["*{\r\n  margin: 0;\r\n  padding: 0;\r\n}\r\n\r\n.bgimg{\r\n  background-image: url(assets/bgimg.jpg);\r\n  background-size: 100%;\r\n}"]}

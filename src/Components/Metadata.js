@@ -20,8 +20,8 @@ useEffect(()=>{
 
 
 return (
-        <div style={{marginTop:'5%'}}>
-            <Table striped bordered hover variant="primary">
+    <div style={{marginTop:'5%',marginLeft:'30%',marginRight:'35%',width:'430px'}}>
+            <Table striped bordered hover variant="dark">
                 <thead>
                     <tr>
                         <th>Data Title</th>
