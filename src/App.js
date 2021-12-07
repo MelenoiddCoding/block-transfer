@@ -8,7 +8,7 @@ import {Navbar, NavDropdown, Nav, Container, Row, Card} from 'react-bootstrap';
 import {Button} from 'react-bootstrap';
 import Metadata from './Components/Metadata';
 import SendTokens from './Components/SendTokens';
-
+import { MDBFooter, MDBContainer, MDBRow, MDBCol } from 'mdb-react-ui-kit'; //added by fry 
 
 
 import getConfig from './config'
@@ -38,19 +38,28 @@ export default function App() {
       <Row className="d-flex justify-content-center"><Metadata/></Row>
       <Row className="d-flex justify-content-center"><SendTokens/></Row>
     </Container>
-    :<Card>
+    :<Card class="card" style={{width:'30%',margin:'auto',marginTop:'200px'}} >
       <Card.Header as="h5">Hello User!</Card.Header>
       <Card.Body>
         <Card.Title> Please Login</Card.Title>
         <Card.Text>
-          This app will not work if you are not Logged, Sorry
+          This app will not work if you are not Logged.
         </Card.Text>
         <Button onClick={login}>Login Now</Button>
       </Card.Body>
     </Card>
     
     }
-
+    
+  <MDBFooter backgroundColor='light' className='text-center text-lg-left'> 
+<div className='text-center p-3' style={{ backgroundColor: 'rgba(22,22,22,0.7)' , color:'white',position:'fixed',bottom:'0px',width:'100%',marginTop:'30%',height:'50px'}}>
+        &copy; {new Date().getFullYear()}{' '}
+        <a className='text-light' href='https://mdbootstrap.com/'>
+          Block-Transfer
+        </a>
+      </div>
+    </MDBFooter>
+ 
   </React.Fragment>
 
   );

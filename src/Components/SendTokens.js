@@ -34,7 +34,7 @@ const SendTokens = props => {
                 )
             )
         }else{
-            alert("Not Enough Founds")
+            alert("Not Enough Founds") 
            
             
         }
@@ -78,7 +78,7 @@ const SendTokens = props => {
     }
 
     return (
-        <Container style={{marginTop:'5%',marginLeft:'30%',marginRight:'30%',width:'430px'}} >
+        <Container style={{marginTop:'5%',marginLeft:'30%',marginRight:'30%',width:'480px',paddingBottom:'80px'}} >
             <Row className="d-flex justify-content-center">
                 <Card>
                     <Card.Header>Near Token Balance</Card.Header>
@@ -115,7 +115,7 @@ const SendTokens = props => {
                                        {
                                            recipients.map((x, index)=>{
                                                return(
-                                                   <tr key={x}>
+                                                   <tr key={x}>  
                                                        <td>{x}</td>
                                                        <td>{`${valuesSent[index]} Near`}</td>
                                                    </tr>
