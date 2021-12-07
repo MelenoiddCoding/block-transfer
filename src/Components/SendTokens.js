@@ -78,9 +78,9 @@ const SendTokens = props => {
     }
 
     return (
-        <Container style={{marginTop:'5%',marginLeft:'30%',marginRight:'30%',width:'480px',paddingBottom:'80px'}} >
+        <Container style={{marginTop:'3%',marginLeft:'35.5%',marginRight:'30%',width:'35.70%',paddingBottom:'80px',opacity:'0.65'}} >
             <Row className="d-flex justify-content-center">
-                <Card>
+                <Card style={{marginBottom:'3%'}} >
                     <Card.Header>Near Token Balance</Card.Header>
                     <ListGroup variant="flush">
                         <ListGroup.Item>{formatOutput(window.utils.format.formatNearAmount(String(balance)))} Near</ListGroup.Item>
@@ -89,7 +89,7 @@ const SendTokens = props => {
             </Row>
             <Row className="d-flex justify-content-center">
                 <Card>
-                    <Card.Header className="d-flex justify-content-center">Send Money to Friend</Card.Header>
+                    <Card.Header  className="d-flex justify-content-center">Send Money to Friend</Card.Header>
                     <Card.Body className="d-flex justify-content-center">
                         <Container >
                             <Row>
