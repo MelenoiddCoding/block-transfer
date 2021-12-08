@@ -38,7 +38,7 @@ export default function App() {
       <Row className="d-flex justify-content-center"><Metadata/></Row>
       <Row className="d-flex justify-content-center"><SendTokens/></Row>
     </Container>
-    :<Card class="card" style={{width:'30%',margin:'auto',marginTop:'200px'}} >
+    :<Card class="card" style={{width:'30%',margin:'auto',marginTop:'200px',opacity:'0.65'}} >
       <Card.Header as="h5">Hello User!</Card.Header>
       <Card.Body>
         <Card.Title> Please Login</Card.Title>
