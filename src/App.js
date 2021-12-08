@@ -38,7 +38,7 @@ export default function App() {
       <Row className="d-flex justify-content-center"><Metadata/></Row>
       <Row className="d-flex justify-content-center"><SendTokens/></Row>
     </Container>
-    :<Card class="card" style={{width:'30%',margin:'auto',marginTop:'200px',opacity:'0.65'}} >
+    :<Card class="card" style={{width:'30%',margin:'auto',marginTop:'200px',opacity:'0.65' }} >
       <Card.Header as="h5">Hello User!</Card.Header>
       <Card.Body>
         <Card.Title> Please Login</Card.Title>
@@ -52,7 +52,7 @@ export default function App() {
     }
     
   <MDBFooter backgroundColor='light' className='text-center text-lg-left'> 
-<div className='text-center p-3' style={{ backgroundColor: 'rgba(22,22,22,0.7)' , color:'white',position:'fixed',bottom:'0px',width:'100%',marginTop:'30%',height:'50px'}}>
+<div className='text-center p-3' style={{ backgroundColor: 'rgba(22,22,22,0.7)' , color:'white',position:'fixed',bottom:'0px',width:'100%',marginTop:'30%',paddingTop:'30px',height:'50px'}}>
         &copy; {new Date().getFullYear()}{' '}
         <a className='text-light' href=''>
           Block-Transfer

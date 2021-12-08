@@ -20,7 +20,7 @@ useEffect(()=>{
 
 
 return (
-    <div  style={{marginTop:'5%',marginLeft:'26.4%',marginRight:'33.3%',width:'27%',opacity:'0.65'}}>
+    <div  style={{ margin:'auto',marginTop:'5%',width:'50%',opacity:'0.65'}}>
             <Table striped bordered hover variant="dark">
                 <thead>
                     <tr>

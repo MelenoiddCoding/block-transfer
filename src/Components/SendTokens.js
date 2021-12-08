@@ -78,24 +78,32 @@ const SendTokens = props => {
     }
 
     return (
-        <Container style={{marginTop:'3%',marginLeft:'35.5%',marginRight:'30%',width:'35.70%',paddingBottom:'80px',opacity:'0.65'}} >
-            <Row className="d-flex justify-content-center">
-                <Card style={{marginBottom:'3%'}} >
-                    <Card.Header>Near Token Balance</Card.Header>
+        <Container  style={{marginTop:'3%',marginLeft:'30%',marginRight:'30%',width:'35.70%',opacity:'0.65',marginBottom:'120px'}} >
+            <Row className="d-flex justify-content-center ">
+                
+                 
+
+                <Card style={{marginBottom:'30px',background:'none',color:'white',}} >
+                    <Card.Header >Near Token Balance</Card.Header>
                     <ListGroup variant="flush">
                         <ListGroup.Item>{formatOutput(window.utils.format.formatNearAmount(String(balance)))} Near</ListGroup.Item>
                     </ListGroup>
                 </Card>
+                
             </Row>
-            <Row className="d-flex justify-content-center">
-                <Card>
+
+            <Row className="d-flex justify-content-center" style={{marginTop:('34px')}}>
+
+
+                <Card style={{background:'none',color:'white',marginTop:'30px'}}>
                     <Card.Header  className="d-flex justify-content-center">Send Money to Friend</Card.Header>
-                    <Card.Body className="d-flex justify-content-center">
-                        <Container >
+                    <Card.Body className="d-flex justify-content-center ">
+                        <Container  >
                             <Row>
                                 <Col >
                                 <input type="text" placeholder="Enter Recipient's Name" ref={Recipient}/>
                                 <input type="text" placeholder="Enter Value to send" ref={ValueInput}/>
+                               
                                 </Col>
                                 <Col>
                                 <Button onClick={sendGift}>
@@ -104,7 +112,7 @@ const SendTokens = props => {
                                 </Col>
                             </Row>
                             <Row className="d-flex justify-content-center">
-                                <Table style={{marginTop:"10px"}} striped bordered hover variant="primary">
+                                <Table style={{marginTop:"24px"}} striped bordered hover variant="primary">
 
                                     <thead>
                                         <tr>
@@ -129,9 +137,10 @@ const SendTokens = props => {
                         </Container>
                     </Card.Body>
                 </Card>
-                <Card>
-                    
-                </Card>
+              
+
+
+              
             </Row>
         </Container>
     );
