@@ -1,6 +1,5 @@
 node_modules
 .cache
 contract/build
-dist
 neardev
 out

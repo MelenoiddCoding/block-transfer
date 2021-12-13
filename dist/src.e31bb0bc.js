@@ -32732,7 +32732,7 @@ nacl.setPRNG = function(fn) {
 
 })(typeof module !== 'undefined' && module.exports ? module.exports : (self.nacl = self.nacl || {}));
 
-},{"crypto":"../node_modules/parcel-bundler/src/builtins/_empty.js"}],"../node_modules/bn.js/lib/bn.js":[function(require,module,exports) {
+},{"crypto":"../node_modules/parcel-bundler/src/builtins/_empty.js"}],"../node_modules/borsh/node_modules/bn.js/lib/bn.js":[function(require,module,exports) {
 var Buffer = require("buffer").Buffer;
 (function (module, exports) {
   'use strict';
@@ -39578,7 +39578,7 @@ function deserializeUnchecked(schema, classType, buffer, Reader = BinaryReader) 
 }
 exports.deserializeUnchecked = deserializeUnchecked;
 
-},{"bn.js":"../node_modules/bn.js/lib/bn.js","bs58":"../node_modules/bs58/index.js","text-encoding-utf-8":"../node_modules/text-encoding-utf-8/lib/encoding.lib.js","buffer":"../node_modules/buffer/index.js"}],"../node_modules/near-api-js/lib/utils/serialize.js":[function(require,module,exports) {
+},{"bn.js":"../node_modules/borsh/node_modules/bn.js/lib/bn.js","bs58":"../node_modules/bs58/index.js","text-encoding-utf-8":"../node_modules/text-encoding-utf-8/lib/encoding.lib.js","buffer":"../node_modules/buffer/index.js"}],"../node_modules/near-api-js/lib/utils/serialize.js":[function(require,module,exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var borsh_1 = require("borsh");
@@ -43134,7 +43134,3557 @@ Object.defineProperty(exports, "JsonRpcProvider", { enumerable: true, get: funct
 Object.defineProperty(exports, "TypedError", { enumerable: true, get: function () { return json_rpc_provider_1.TypedError; } });
 Object.defineProperty(exports, "ErrorContext", { enumerable: true, get: function () { return json_rpc_provider_1.ErrorContext; } });
 
-},{"./provider":"../node_modules/near-api-js/lib/providers/provider.js","./json-rpc-provider":"../node_modules/near-api-js/lib/providers/json-rpc-provider.js"}],"../node_modules/near-api-js/lib/utils/format.js":[function(require,module,exports) {
+},{"./provider":"../node_modules/near-api-js/lib/providers/provider.js","./json-rpc-provider":"../node_modules/near-api-js/lib/providers/json-rpc-provider.js"}],"../node_modules/near-api-js/node_modules/bn.js/lib/bn.js":[function(require,module,exports) {
+var Buffer = require("buffer").Buffer;
+(function (module, exports) {
+  'use strict';
+
+  // Utils
+  function assert (val, msg) {
+    if (!val) throw new Error(msg || 'Assertion failed');
+  }
+
+  // Could use `inherits` module, but don't want to move from single file
+  // architecture yet.
+  function inherits (ctor, superCtor) {
+    ctor.super_ = superCtor;
+    var TempCtor = function () {};
+    TempCtor.prototype = superCtor.prototype;
+    ctor.prototype = new TempCtor();
+    ctor.prototype.constructor = ctor;
+  }
+
+  // BN
+
+  function BN (number, base, endian) {
+    if (BN.isBN(number)) {
+      return number;
+    }
+
+    this.negative = 0;
+    this.words = null;
+    this.length = 0;
+
+    // Reduction context
+    this.red = null;
+
+    if (number !== null) {
+      if (base === 'le' || base === 'be') {
+        endian = base;
+        base = 10;
+      }
+
+      this._init(number || 0, base || 10, endian || 'be');
+    }
+  }
+  if (typeof module === 'object') {
+    module.exports = BN;
+  } else {
+    exports.BN = BN;
+  }
+
+  BN.BN = BN;
+  BN.wordSize = 26;
+
+  var Buffer;
+  try {
+    if (typeof window !== 'undefined' && typeof window.Buffer !== 'undefined') {
+      Buffer = window.Buffer;
+    } else {
+      Buffer = require('buffer').Buffer;
+    }
+  } catch (e) {
+  }
+
+  BN.isBN = function isBN (num) {
+    if (num instanceof BN) {
+      return true;
+    }
+
+    return num !== null && typeof num === 'object' &&
+      num.constructor.wordSize === BN.wordSize && Array.isArray(num.words);
+  };
+
+  BN.max = function max (left, right) {
+    if (left.cmp(right) > 0) return left;
+    return right;
+  };
+
+  BN.min = function min (left, right) {
+    if (left.cmp(right) < 0) return left;
+    return right;
+  };
+
+  BN.prototype._init = function init (number, base, endian) {
+    if (typeof number === 'number') {
+      return this._initNumber(number, base, endian);
+    }
+
+    if (typeof number === 'object') {
+      return this._initArray(number, base, endian);
+    }
+
+    if (base === 'hex') {
+      base = 16;
+    }
+    assert(base === (base | 0) && base >= 2 && base <= 36);
+
+    number = number.toString().replace(/\s+/g, '');
+    var start = 0;
+    if (number[0] === '-') {
+      start++;
+      this.negative = 1;
+    }
+
+    if (start < number.length) {
+      if (base === 16) {
+        this._parseHex(number, start, endian);
+      } else {
+        this._parseBase(number, base, start);
+        if (endian === 'le') {
+          this._initArray(this.toArray(), base, endian);
+        }
+      }
+    }
+  };
+
+  BN.prototype._initNumber = function _initNumber (number, base, endian) {
+    if (number < 0) {
+      this.negative = 1;
+      number = -number;
+    }
+    if (number < 0x4000000) {
+      this.words = [number & 0x3ffffff];
+      this.length = 1;
+    } else if (number < 0x10000000000000) {
+      this.words = [
+        number & 0x3ffffff,
+        (number / 0x4000000) & 0x3ffffff
+      ];
+      this.length = 2;
+    } else {
+      assert(number < 0x20000000000000); // 2 ^ 53 (unsafe)
+      this.words = [
+        number & 0x3ffffff,
+        (number / 0x4000000) & 0x3ffffff,
+        1
+      ];
+      this.length = 3;
+    }
+
+    if (endian !== 'le') return;
+
+    // Reverse the bytes
+    this._initArray(this.toArray(), base, endian);
+  };
+
+  BN.prototype._initArray = function _initArray (number, base, endian) {
+    // Perhaps a Uint8Array
+    assert(typeof number.length === 'number');
+    if (number.length <= 0) {
+      this.words = [0];
+      this.length = 1;
+      return this;
+    }
+
+    this.length = Math.ceil(number.length / 3);
+    this.words = new Array(this.length);
+    for (var i = 0; i < this.length; i++) {
+      this.words[i] = 0;
+    }
+
+    var j, w;
+    var off = 0;
+    if (endian === 'be') {
+      for (i = number.length - 1, j = 0; i >= 0; i -= 3) {
+        w = number[i] | (number[i - 1] << 8) | (number[i - 2] << 16);
+        this.words[j] |= (w << off) & 0x3ffffff;
+        this.words[j + 1] = (w >>> (26 - off)) & 0x3ffffff;
+        off += 24;
+        if (off >= 26) {
+          off -= 26;
+          j++;
+        }
+      }
+    } else if (endian === 'le') {
+      for (i = 0, j = 0; i < number.length; i += 3) {
+        w = number[i] | (number[i + 1] << 8) | (number[i + 2] << 16);
+        this.words[j] |= (w << off) & 0x3ffffff;
+        this.words[j + 1] = (w >>> (26 - off)) & 0x3ffffff;
+        off += 24;
+        if (off >= 26) {
+          off -= 26;
+          j++;
+        }
+      }
+    }
+    return this._strip();
+  };
+
+  function parseHex4Bits (string, index) {
+    var c = string.charCodeAt(index);
+    // '0' - '9'
+    if (c >= 48 && c <= 57) {
+      return c - 48;
+    // 'A' - 'F'
+    } else if (c >= 65 && c <= 70) {
+      return c - 55;
+    // 'a' - 'f'
+    } else if (c >= 97 && c <= 102) {
+      return c - 87;
+    } else {
+      assert(false, 'Invalid character in ' + string);
+    }
+  }
+
+  function parseHexByte (string, lowerBound, index) {
+    var r = parseHex4Bits(string, index);
+    if (index - 1 >= lowerBound) {
+      r |= parseHex4Bits(string, index - 1) << 4;
+    }
+    return r;
+  }
+
+  BN.prototype._parseHex = function _parseHex (number, start, endian) {
+    // Create possibly bigger array to ensure that it fits the number
+    this.length = Math.ceil((number.length - start) / 6);
+    this.words = new Array(this.length);
+    for (var i = 0; i < this.length; i++) {
+      this.words[i] = 0;
+    }
+
+    // 24-bits chunks
+    var off = 0;
+    var j = 0;
+
+    var w;
+    if (endian === 'be') {
+      for (i = number.length - 1; i >= start; i -= 2) {
+        w = parseHexByte(number, start, i) << off;
+        this.words[j] |= w & 0x3ffffff;
+        if (off >= 18) {
+          off -= 18;
+          j += 1;
+          this.words[j] |= w >>> 26;
+        } else {
+          off += 8;
+        }
+      }
+    } else {
+      var parseLength = number.length - start;
+      for (i = parseLength % 2 === 0 ? start + 1 : start; i < number.length; i += 2) {
+        w = parseHexByte(number, start, i) << off;
+        this.words[j] |= w & 0x3ffffff;
+        if (off >= 18) {
+          off -= 18;
+          j += 1;
+          this.words[j] |= w >>> 26;
+        } else {
+          off += 8;
+        }
+      }
+    }
+
+    this._strip();
+  };
+
+  function parseBase (str, start, end, mul) {
+    var r = 0;
+    var b = 0;
+    var len = Math.min(str.length, end);
+    for (var i = start; i < len; i++) {
+      var c = str.charCodeAt(i) - 48;
+
+      r *= mul;
+
+      // 'a'
+      if (c >= 49) {
+        b = c - 49 + 0xa;
+
+      // 'A'
+      } else if (c >= 17) {
+        b = c - 17 + 0xa;
+
+      // '0' - '9'
+      } else {
+        b = c;
+      }
+      assert(c >= 0 && b < mul, 'Invalid character');
+      r += b;
+    }
+    return r;
+  }
+
+  BN.prototype._parseBase = function _parseBase (number, base, start) {
+    // Initialize as zero
+    this.words = [0];
+    this.length = 1;
+
+    // Find length of limb in base
+    for (var limbLen = 0, limbPow = 1; limbPow <= 0x3ffffff; limbPow *= base) {
+      limbLen++;
+    }
+    limbLen--;
+    limbPow = (limbPow / base) | 0;
+
+    var total = number.length - start;
+    var mod = total % limbLen;
+    var end = Math.min(total, total - mod) + start;
+
+    var word = 0;
+    for (var i = start; i < end; i += limbLen) {
+      word = parseBase(number, i, i + limbLen, base);
+
+      this.imuln(limbPow);
+      if (this.words[0] + word < 0x4000000) {
+        this.words[0] += word;
+      } else {
+        this._iaddn(word);
+      }
+    }
+
+    if (mod !== 0) {
+      var pow = 1;
+      word = parseBase(number, i, number.length, base);
+
+      for (i = 0; i < mod; i++) {
+        pow *= base;
+      }
+
+      this.imuln(pow);
+      if (this.words[0] + word < 0x4000000) {
+        this.words[0] += word;
+      } else {
+        this._iaddn(word);
+      }
+    }
+
+    this._strip();
+  };
+
+  BN.prototype.copy = function copy (dest) {
+    dest.words = new Array(this.length);
+    for (var i = 0; i < this.length; i++) {
+      dest.words[i] = this.words[i];
+    }
+    dest.length = this.length;
+    dest.negative = this.negative;
+    dest.red = this.red;
+  };
+
+  function move (dest, src) {
+    dest.words = src.words;
+    dest.length = src.length;
+    dest.negative = src.negative;
+    dest.red = src.red;
+  }
+
+  BN.prototype._move = function _move (dest) {
+    move(dest, this);
+  };
+
+  BN.prototype.clone = function clone () {
+    var r = new BN(null);
+    this.copy(r);
+    return r;
+  };
+
+  BN.prototype._expand = function _expand (size) {
+    while (this.length < size) {
+      this.words[this.length++] = 0;
+    }
+    return this;
+  };
+
+  // Remove leading `0` from `this`
+  BN.prototype._strip = function strip () {
+    while (this.length > 1 && this.words[this.length - 1] === 0) {
+      this.length--;
+    }
+    return this._normSign();
+  };
+
+  BN.prototype._normSign = function _normSign () {
+    // -0 = 0
+    if (this.length === 1 && this.words[0] === 0) {
+      this.negative = 0;
+    }
+    return this;
+  };
+
+  // Check Symbol.for because not everywhere where Symbol defined
+  // See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol#Browser_compatibility
+  if (typeof Symbol !== 'undefined' && typeof Symbol.for === 'function') {
+    try {
+      BN.prototype[Symbol.for('nodejs.util.inspect.custom')] = inspect;
+    } catch (e) {
+      BN.prototype.inspect = inspect;
+    }
+  } else {
+    BN.prototype.inspect = inspect;
+  }
+
+  function inspect () {
+    return (this.red ? '<BN-R: ' : '<BN: ') + this.toString(16) + '>';
+  }
+
+  /*
+
+  var zeros = [];
+  var groupSizes = [];
+  var groupBases = [];
+
+  var s = '';
+  var i = -1;
+  while (++i < BN.wordSize) {
+    zeros[i] = s;
+    s += '0';
+  }
+  groupSizes[0] = 0;
+  groupSizes[1] = 0;
+  groupBases[0] = 0;
+  groupBases[1] = 0;
+  var base = 2 - 1;
+  while (++base < 36 + 1) {
+    var groupSize = 0;
+    var groupBase = 1;
+    while (groupBase < (1 << BN.wordSize) / base) {
+      groupBase *= base;
+      groupSize += 1;
+    }
+    groupSizes[base] = groupSize;
+    groupBases[base] = groupBase;
+  }
+
+  */
+
+  var zeros = [
+    '',
+    '0',
+    '00',
+    '000',
+    '0000',
+    '00000',
+    '000000',
+    '0000000',
+    '00000000',
+    '000000000',
+    '0000000000',
+    '00000000000',
+    '000000000000',
+    '0000000000000',
+    '00000000000000',
+    '000000000000000',
+    '0000000000000000',
+    '00000000000000000',
+    '000000000000000000',
+    '0000000000000000000',
+    '00000000000000000000',
+    '000000000000000000000',
+    '0000000000000000000000',
+    '00000000000000000000000',
+    '000000000000000000000000',
+    '0000000000000000000000000'
+  ];
+
+  var groupSizes = [
+    0, 0,
+    25, 16, 12, 11, 10, 9, 8,
+    8, 7, 7, 7, 7, 6, 6,
+    6, 6, 6, 6, 6, 5, 5,
+    5, 5, 5, 5, 5, 5, 5,
+    5, 5, 5, 5, 5, 5, 5
+  ];
+
+  var groupBases = [
+    0, 0,
+    33554432, 43046721, 16777216, 48828125, 60466176, 40353607, 16777216,
+    43046721, 10000000, 19487171, 35831808, 62748517, 7529536, 11390625,
+    16777216, 24137569, 34012224, 47045881, 64000000, 4084101, 5153632,
+    6436343, 7962624, 9765625, 11881376, 14348907, 17210368, 20511149,
+    24300000, 28629151, 33554432, 39135393, 45435424, 52521875, 60466176
+  ];
+
+  BN.prototype.toString = function toString (base, padding) {
+    base = base || 10;
+    padding = padding | 0 || 1;
+
+    var out;
+    if (base === 16 || base === 'hex') {
+      out = '';
+      var off = 0;
+      var carry = 0;
+      for (var i = 0; i < this.length; i++) {
+        var w = this.words[i];
+        var word = (((w << off) | carry) & 0xffffff).toString(16);
+        carry = (w >>> (24 - off)) & 0xffffff;
+        if (carry !== 0 || i !== this.length - 1) {
+          out = zeros[6 - word.length] + word + out;
+        } else {
+          out = word + out;
+        }
+        off += 2;
+        if (off >= 26) {
+          off -= 26;
+          i--;
+        }
+      }
+      if (carry !== 0) {
+        out = carry.toString(16) + out;
+      }
+      while (out.length % padding !== 0) {
+        out = '0' + out;
+      }
+      if (this.negative !== 0) {
+        out = '-' + out;
+      }
+      return out;
+    }
+
+    if (base === (base | 0) && base >= 2 && base <= 36) {
+      // var groupSize = Math.floor(BN.wordSize * Math.LN2 / Math.log(base));
+      var groupSize = groupSizes[base];
+      // var groupBase = Math.pow(base, groupSize);
+      var groupBase = groupBases[base];
+      out = '';
+      var c = this.clone();
+      c.negative = 0;
+      while (!c.isZero()) {
+        var r = c.modrn(groupBase).toString(base);
+        c = c.idivn(groupBase);
+
+        if (!c.isZero()) {
+          out = zeros[groupSize - r.length] + r + out;
+        } else {
+          out = r + out;
+        }
+      }
+      if (this.isZero()) {
+        out = '0' + out;
+      }
+      while (out.length % padding !== 0) {
+        out = '0' + out;
+      }
+      if (this.negative !== 0) {
+        out = '-' + out;
+      }
+      return out;
+    }
+
+    assert(false, 'Base should be between 2 and 36');
+  };
+
+  BN.prototype.toNumber = function toNumber () {
+    var ret = this.words[0];
+    if (this.length === 2) {
+      ret += this.words[1] * 0x4000000;
+    } else if (this.length === 3 && this.words[2] === 0x01) {
+      // NOTE: at this stage it is known that the top bit is set
+      ret += 0x10000000000000 + (this.words[1] * 0x4000000);
+    } else if (this.length > 2) {
+      assert(false, 'Number can only safely store up to 53 bits');
+    }
+    return (this.negative !== 0) ? -ret : ret;
+  };
+
+  BN.prototype.toJSON = function toJSON () {
+    return this.toString(16, 2);
+  };
+
+  if (Buffer) {
+    BN.prototype.toBuffer = function toBuffer (endian, length) {
+      return this.toArrayLike(Buffer, endian, length);
+    };
+  }
+
+  BN.prototype.toArray = function toArray (endian, length) {
+    return this.toArrayLike(Array, endian, length);
+  };
+
+  var allocate = function allocate (ArrayType, size) {
+    if (ArrayType.allocUnsafe) {
+      return ArrayType.allocUnsafe(size);
+    }
+    return new ArrayType(size);
+  };
+
+  BN.prototype.toArrayLike = function toArrayLike (ArrayType, endian, length) {
+    this._strip();
+
+    var byteLength = this.byteLength();
+    var reqLength = length || Math.max(1, byteLength);
+    assert(byteLength <= reqLength, 'byte array longer than desired length');
+    assert(reqLength > 0, 'Requested array length <= 0');
+
+    var res = allocate(ArrayType, reqLength);
+    var postfix = endian === 'le' ? 'LE' : 'BE';
+    this['_toArrayLike' + postfix](res, byteLength);
+    return res;
+  };
+
+  BN.prototype._toArrayLikeLE = function _toArrayLikeLE (res, byteLength) {
+    var position = 0;
+    var carry = 0;
+
+    for (var i = 0, shift = 0; i < this.length; i++) {
+      var word = (this.words[i] << shift) | carry;
+
+      res[position++] = word & 0xff;
+      if (position < res.length) {
+        res[position++] = (word >> 8) & 0xff;
+      }
+      if (position < res.length) {
+        res[position++] = (word >> 16) & 0xff;
+      }
+
+      if (shift === 6) {
+        if (position < res.length) {
+          res[position++] = (word >> 24) & 0xff;
+        }
+        carry = 0;
+        shift = 0;
+      } else {
+        carry = word >>> 24;
+        shift += 2;
+      }
+    }
+
+    if (position < res.length) {
+      res[position++] = carry;
+
+      while (position < res.length) {
+        res[position++] = 0;
+      }
+    }
+  };
+
+  BN.prototype._toArrayLikeBE = function _toArrayLikeBE (res, byteLength) {
+    var position = res.length - 1;
+    var carry = 0;
+
+    for (var i = 0, shift = 0; i < this.length; i++) {
+      var word = (this.words[i] << shift) | carry;
+
+      res[position--] = word & 0xff;
+      if (position >= 0) {
+        res[position--] = (word >> 8) & 0xff;
+      }
+      if (position >= 0) {
+        res[position--] = (word >> 16) & 0xff;
+      }
+
+      if (shift === 6) {
+        if (position >= 0) {
+          res[position--] = (word >> 24) & 0xff;
+        }
+        carry = 0;
+        shift = 0;
+      } else {
+        carry = word >>> 24;
+        shift += 2;
+      }
+    }
+
+    if (position >= 0) {
+      res[position--] = carry;
+
+      while (position >= 0) {
+        res[position--] = 0;
+      }
+    }
+  };
+
+  if (Math.clz32) {
+    BN.prototype._countBits = function _countBits (w) {
+      return 32 - Math.clz32(w);
+    };
+  } else {
+    BN.prototype._countBits = function _countBits (w) {
+      var t = w;
+      var r = 0;
+      if (t >= 0x1000) {
+        r += 13;
+        t >>>= 13;
+      }
+      if (t >= 0x40) {
+        r += 7;
+        t >>>= 7;
+      }
+      if (t >= 0x8) {
+        r += 4;
+        t >>>= 4;
+      }
+      if (t >= 0x02) {
+        r += 2;
+        t >>>= 2;
+      }
+      return r + t;
+    };
+  }
+
+  BN.prototype._zeroBits = function _zeroBits (w) {
+    // Short-cut
+    if (w === 0) return 26;
+
+    var t = w;
+    var r = 0;
+    if ((t & 0x1fff) === 0) {
+      r += 13;
+      t >>>= 13;
+    }
+    if ((t & 0x7f) === 0) {
+      r += 7;
+      t >>>= 7;
+    }
+    if ((t & 0xf) === 0) {
+      r += 4;
+      t >>>= 4;
+    }
+    if ((t & 0x3) === 0) {
+      r += 2;
+      t >>>= 2;
+    }
+    if ((t & 0x1) === 0) {
+      r++;
+    }
+    return r;
+  };
+
+  // Return number of used bits in a BN
+  BN.prototype.bitLength = function bitLength () {
+    var w = this.words[this.length - 1];
+    var hi = this._countBits(w);
+    return (this.length - 1) * 26 + hi;
+  };
+
+  function toBitArray (num) {
+    var w = new Array(num.bitLength());
+
+    for (var bit = 0; bit < w.length; bit++) {
+      var off = (bit / 26) | 0;
+      var wbit = bit % 26;
+
+      w[bit] = (num.words[off] >>> wbit) & 0x01;
+    }
+
+    return w;
+  }
+
+  // Number of trailing zero bits
+  BN.prototype.zeroBits = function zeroBits () {
+    if (this.isZero()) return 0;
+
+    var r = 0;
+    for (var i = 0; i < this.length; i++) {
+      var b = this._zeroBits(this.words[i]);
+      r += b;
+      if (b !== 26) break;
+    }
+    return r;
+  };
+
+  BN.prototype.byteLength = function byteLength () {
+    return Math.ceil(this.bitLength() / 8);
+  };
+
+  BN.prototype.toTwos = function toTwos (width) {
+    if (this.negative !== 0) {
+      return this.abs().inotn(width).iaddn(1);
+    }
+    return this.clone();
+  };
+
+  BN.prototype.fromTwos = function fromTwos (width) {
+    if (this.testn(width - 1)) {
+      return this.notn(width).iaddn(1).ineg();
+    }
+    return this.clone();
+  };
+
+  BN.prototype.isNeg = function isNeg () {
+    return this.negative !== 0;
+  };
+
+  // Return negative clone of `this`
+  BN.prototype.neg = function neg () {
+    return this.clone().ineg();
+  };
+
+  BN.prototype.ineg = function ineg () {
+    if (!this.isZero()) {
+      this.negative ^= 1;
+    }
+
+    return this;
+  };
+
+  // Or `num` with `this` in-place
+  BN.prototype.iuor = function iuor (num) {
+    while (this.length < num.length) {
+      this.words[this.length++] = 0;
+    }
+
+    for (var i = 0; i < num.length; i++) {
+      this.words[i] = this.words[i] | num.words[i];
+    }
+
+    return this._strip();
+  };
+
+  BN.prototype.ior = function ior (num) {
+    assert((this.negative | num.negative) === 0);
+    return this.iuor(num);
+  };
+
+  // Or `num` with `this`
+  BN.prototype.or = function or (num) {
+    if (this.length > num.length) return this.clone().ior(num);
+    return num.clone().ior(this);
+  };
+
+  BN.prototype.uor = function uor (num) {
+    if (this.length > num.length) return this.clone().iuor(num);
+    return num.clone().iuor(this);
+  };
+
+  // And `num` with `this` in-place
+  BN.prototype.iuand = function iuand (num) {
+    // b = min-length(num, this)
+    var b;
+    if (this.length > num.length) {
+      b = num;
+    } else {
+      b = this;
+    }
+
+    for (var i = 0; i < b.length; i++) {
+      this.words[i] = this.words[i] & num.words[i];
+    }
+
+    this.length = b.length;
+
+    return this._strip();
+  };
+
+  BN.prototype.iand = function iand (num) {
+    assert((this.negative | num.negative) === 0);
+    return this.iuand(num);
+  };
+
+  // And `num` with `this`
+  BN.prototype.and = function and (num) {
+    if (this.length > num.length) return this.clone().iand(num);
+    return num.clone().iand(this);
+  };
+
+  BN.prototype.uand = function uand (num) {
+    if (this.length > num.length) return this.clone().iuand(num);
+    return num.clone().iuand(this);
+  };
+
+  // Xor `num` with `this` in-place
+  BN.prototype.iuxor = function iuxor (num) {
+    // a.length > b.length
+    var a;
+    var b;
+    if (this.length > num.length) {
+      a = this;
+      b = num;
+    } else {
+      a = num;
+      b = this;
+    }
+
+    for (var i = 0; i < b.length; i++) {
+      this.words[i] = a.words[i] ^ b.words[i];
+    }
+
+    if (this !== a) {
+      for (; i < a.length; i++) {
+        this.words[i] = a.words[i];
+      }
+    }
+
+    this.length = a.length;
+
+    return this._strip();
+  };
+
+  BN.prototype.ixor = function ixor (num) {
+    assert((this.negative | num.negative) === 0);
+    return this.iuxor(num);
+  };
+
+  // Xor `num` with `this`
+  BN.prototype.xor = function xor (num) {
+    if (this.length > num.length) return this.clone().ixor(num);
+    return num.clone().ixor(this);
+  };
+
+  BN.prototype.uxor = function uxor (num) {
+    if (this.length > num.length) return this.clone().iuxor(num);
+    return num.clone().iuxor(this);
+  };
+
+  // Not ``this`` with ``width`` bitwidth
+  BN.prototype.inotn = function inotn (width) {
+    assert(typeof width === 'number' && width >= 0);
+
+    var bytesNeeded = Math.ceil(width / 26) | 0;
+    var bitsLeft = width % 26;
+
+    // Extend the buffer with leading zeroes
+    this._expand(bytesNeeded);
+
+    if (bitsLeft > 0) {
+      bytesNeeded--;
+    }
+
+    // Handle complete words
+    for (var i = 0; i < bytesNeeded; i++) {
+      this.words[i] = ~this.words[i] & 0x3ffffff;
+    }
+
+    // Handle the residue
+    if (bitsLeft > 0) {
+      this.words[i] = ~this.words[i] & (0x3ffffff >> (26 - bitsLeft));
+    }
+
+    // And remove leading zeroes
+    return this._strip();
+  };
+
+  BN.prototype.notn = function notn (width) {
+    return this.clone().inotn(width);
+  };
+
+  // Set `bit` of `this`
+  BN.prototype.setn = function setn (bit, val) {
+    assert(typeof bit === 'number' && bit >= 0);
+
+    var off = (bit / 26) | 0;
+    var wbit = bit % 26;
+
+    this._expand(off + 1);
+
+    if (val) {
+      this.words[off] = this.words[off] | (1 << wbit);
+    } else {
+      this.words[off] = this.words[off] & ~(1 << wbit);
+    }
+
+    return this._strip();
+  };
+
+  // Add `num` to `this` in-place
+  BN.prototype.iadd = function iadd (num) {
+    var r;
+
+    // negative + positive
+    if (this.negative !== 0 && num.negative === 0) {
+      this.negative = 0;
+      r = this.isub(num);
+      this.negative ^= 1;
+      return this._normSign();
+
+    // positive + negative
+    } else if (this.negative === 0 && num.negative !== 0) {
+      num.negative = 0;
+      r = this.isub(num);
+      num.negative = 1;
+      return r._normSign();
+    }
+
+    // a.length > b.length
+    var a, b;
+    if (this.length > num.length) {
+      a = this;
+      b = num;
+    } else {
+      a = num;
+      b = this;
+    }
+
+    var carry = 0;
+    for (var i = 0; i < b.length; i++) {
+      r = (a.words[i] | 0) + (b.words[i] | 0) + carry;
+      this.words[i] = r & 0x3ffffff;
+      carry = r >>> 26;
+    }
+    for (; carry !== 0 && i < a.length; i++) {
+      r = (a.words[i] | 0) + carry;
+      this.words[i] = r & 0x3ffffff;
+      carry = r >>> 26;
+    }
+
+    this.length = a.length;
+    if (carry !== 0) {
+      this.words[this.length] = carry;
+      this.length++;
+    // Copy the rest of the words
+    } else if (a !== this) {
+      for (; i < a.length; i++) {
+        this.words[i] = a.words[i];
+      }
+    }
+
+    return this;
+  };
+
+  // Add `num` to `this`
+  BN.prototype.add = function add (num) {
+    var res;
+    if (num.negative !== 0 && this.negative === 0) {
+      num.negative = 0;
+      res = this.sub(num);
+      num.negative ^= 1;
+      return res;
+    } else if (num.negative === 0 && this.negative !== 0) {
+      this.negative = 0;
+      res = num.sub(this);
+      this.negative = 1;
+      return res;
+    }
+
+    if (this.length > num.length) return this.clone().iadd(num);
+
+    return num.clone().iadd(this);
+  };
+
+  // Subtract `num` from `this` in-place
+  BN.prototype.isub = function isub (num) {
+    // this - (-num) = this + num
+    if (num.negative !== 0) {
+      num.negative = 0;
+      var r = this.iadd(num);
+      num.negative = 1;
+      return r._normSign();
+
+    // -this - num = -(this + num)
+    } else if (this.negative !== 0) {
+      this.negative = 0;
+      this.iadd(num);
+      this.negative = 1;
+      return this._normSign();
+    }
+
+    // At this point both numbers are positive
+    var cmp = this.cmp(num);
+
+    // Optimization - zeroify
+    if (cmp === 0) {
+      this.negative = 0;
+      this.length = 1;
+      this.words[0] = 0;
+      return this;
+    }
+
+    // a > b
+    var a, b;
+    if (cmp > 0) {
+      a = this;
+      b = num;
+    } else {
+      a = num;
+      b = this;
+    }
+
+    var carry = 0;
+    for (var i = 0; i < b.length; i++) {
+      r = (a.words[i] | 0) - (b.words[i] | 0) + carry;
+      carry = r >> 26;
+      this.words[i] = r & 0x3ffffff;
+    }
+    for (; carry !== 0 && i < a.length; i++) {
+      r = (a.words[i] | 0) + carry;
+      carry = r >> 26;
+      this.words[i] = r & 0x3ffffff;
+    }
+
+    // Copy rest of the words
+    if (carry === 0 && i < a.length && a !== this) {
+      for (; i < a.length; i++) {
+        this.words[i] = a.words[i];
+      }
+    }
+
+    this.length = Math.max(this.length, i);
+
+    if (a !== this) {
+      this.negative = 1;
+    }
+
+    return this._strip();
+  };
+
+  // Subtract `num` from `this`
+  BN.prototype.sub = function sub (num) {
+    return this.clone().isub(num);
+  };
+
+  function smallMulTo (self, num, out) {
+    out.negative = num.negative ^ self.negative;
+    var len = (self.length + num.length) | 0;
+    out.length = len;
+    len = (len - 1) | 0;
+
+    // Peel one iteration (compiler can't do it, because of code complexity)
+    var a = self.words[0] | 0;
+    var b = num.words[0] | 0;
+    var r = a * b;
+
+    var lo = r & 0x3ffffff;
+    var carry = (r / 0x4000000) | 0;
+    out.words[0] = lo;
+
+    for (var k = 1; k < len; k++) {
+      // Sum all words with the same `i + j = k` and accumulate `ncarry`,
+      // note that ncarry could be >= 0x3ffffff
+      var ncarry = carry >>> 26;
+      var rword = carry & 0x3ffffff;
+      var maxJ = Math.min(k, num.length - 1);
+      for (var j = Math.max(0, k - self.length + 1); j <= maxJ; j++) {
+        var i = (k - j) | 0;
+        a = self.words[i] | 0;
+        b = num.words[j] | 0;
+        r = a * b + rword;
+        ncarry += (r / 0x4000000) | 0;
+        rword = r & 0x3ffffff;
+      }
+      out.words[k] = rword | 0;
+      carry = ncarry | 0;
+    }
+    if (carry !== 0) {
+      out.words[k] = carry | 0;
+    } else {
+      out.length--;
+    }
+
+    return out._strip();
+  }
+
+  // TODO(indutny): it may be reasonable to omit it for users who don't need
+  // to work with 256-bit numbers, otherwise it gives 20% improvement for 256-bit
+  // multiplication (like elliptic secp256k1).
+  var comb10MulTo = function comb10MulTo (self, num, out) {
+    var a = self.words;
+    var b = num.words;
+    var o = out.words;
+    var c = 0;
+    var lo;
+    var mid;
+    var hi;
+    var a0 = a[0] | 0;
+    var al0 = a0 & 0x1fff;
+    var ah0 = a0 >>> 13;
+    var a1 = a[1] | 0;
+    var al1 = a1 & 0x1fff;
+    var ah1 = a1 >>> 13;
+    var a2 = a[2] | 0;
+    var al2 = a2 & 0x1fff;
+    var ah2 = a2 >>> 13;
+    var a3 = a[3] | 0;
+    var al3 = a3 & 0x1fff;
+    var ah3 = a3 >>> 13;
+    var a4 = a[4] | 0;
+    var al4 = a4 & 0x1fff;
+    var ah4 = a4 >>> 13;
+    var a5 = a[5] | 0;
+    var al5 = a5 & 0x1fff;
+    var ah5 = a5 >>> 13;
+    var a6 = a[6] | 0;
+    var al6 = a6 & 0x1fff;
+    var ah6 = a6 >>> 13;
+    var a7 = a[7] | 0;
+    var al7 = a7 & 0x1fff;
+    var ah7 = a7 >>> 13;
+    var a8 = a[8] | 0;
+    var al8 = a8 & 0x1fff;
+    var ah8 = a8 >>> 13;
+    var a9 = a[9] | 0;
+    var al9 = a9 & 0x1fff;
+    var ah9 = a9 >>> 13;
+    var b0 = b[0] | 0;
+    var bl0 = b0 & 0x1fff;
+    var bh0 = b0 >>> 13;
+    var b1 = b[1] | 0;
+    var bl1 = b1 & 0x1fff;
+    var bh1 = b1 >>> 13;
+    var b2 = b[2] | 0;
+    var bl2 = b2 & 0x1fff;
+    var bh2 = b2 >>> 13;
+    var b3 = b[3] | 0;
+    var bl3 = b3 & 0x1fff;
+    var bh3 = b3 >>> 13;
+    var b4 = b[4] | 0;
+    var bl4 = b4 & 0x1fff;
+    var bh4 = b4 >>> 13;
+    var b5 = b[5] | 0;
+    var bl5 = b5 & 0x1fff;
+    var bh5 = b5 >>> 13;
+    var b6 = b[6] | 0;
+    var bl6 = b6 & 0x1fff;
+    var bh6 = b6 >>> 13;
+    var b7 = b[7] | 0;
+    var bl7 = b7 & 0x1fff;
+    var bh7 = b7 >>> 13;
+    var b8 = b[8] | 0;
+    var bl8 = b8 & 0x1fff;
+    var bh8 = b8 >>> 13;
+    var b9 = b[9] | 0;
+    var bl9 = b9 & 0x1fff;
+    var bh9 = b9 >>> 13;
+
+    out.negative = self.negative ^ num.negative;
+    out.length = 19;
+    /* k = 0 */
+    lo = Math.imul(al0, bl0);
+    mid = Math.imul(al0, bh0);
+    mid = (mid + Math.imul(ah0, bl0)) | 0;
+    hi = Math.imul(ah0, bh0);
+    var w0 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w0 >>> 26)) | 0;
+    w0 &= 0x3ffffff;
+    /* k = 1 */
+    lo = Math.imul(al1, bl0);
+    mid = Math.imul(al1, bh0);
+    mid = (mid + Math.imul(ah1, bl0)) | 0;
+    hi = Math.imul(ah1, bh0);
+    lo = (lo + Math.imul(al0, bl1)) | 0;
+    mid = (mid + Math.imul(al0, bh1)) | 0;
+    mid = (mid + Math.imul(ah0, bl1)) | 0;
+    hi = (hi + Math.imul(ah0, bh1)) | 0;
+    var w1 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w1 >>> 26)) | 0;
+    w1 &= 0x3ffffff;
+    /* k = 2 */
+    lo = Math.imul(al2, bl0);
+    mid = Math.imul(al2, bh0);
+    mid = (mid + Math.imul(ah2, bl0)) | 0;
+    hi = Math.imul(ah2, bh0);
+    lo = (lo + Math.imul(al1, bl1)) | 0;
+    mid = (mid + Math.imul(al1, bh1)) | 0;
+    mid = (mid + Math.imul(ah1, bl1)) | 0;
+    hi = (hi + Math.imul(ah1, bh1)) | 0;
+    lo = (lo + Math.imul(al0, bl2)) | 0;
+    mid = (mid + Math.imul(al0, bh2)) | 0;
+    mid = (mid + Math.imul(ah0, bl2)) | 0;
+    hi = (hi + Math.imul(ah0, bh2)) | 0;
+    var w2 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w2 >>> 26)) | 0;
+    w2 &= 0x3ffffff;
+    /* k = 3 */
+    lo = Math.imul(al3, bl0);
+    mid = Math.imul(al3, bh0);
+    mid = (mid + Math.imul(ah3, bl0)) | 0;
+    hi = Math.imul(ah3, bh0);
+    lo = (lo + Math.imul(al2, bl1)) | 0;
+    mid = (mid + Math.imul(al2, bh1)) | 0;
+    mid = (mid + Math.imul(ah2, bl1)) | 0;
+    hi = (hi + Math.imul(ah2, bh1)) | 0;
+    lo = (lo + Math.imul(al1, bl2)) | 0;
+    mid = (mid + Math.imul(al1, bh2)) | 0;
+    mid = (mid + Math.imul(ah1, bl2)) | 0;
+    hi = (hi + Math.imul(ah1, bh2)) | 0;
+    lo = (lo + Math.imul(al0, bl3)) | 0;
+    mid = (mid + Math.imul(al0, bh3)) | 0;
+    mid = (mid + Math.imul(ah0, bl3)) | 0;
+    hi = (hi + Math.imul(ah0, bh3)) | 0;
+    var w3 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w3 >>> 26)) | 0;
+    w3 &= 0x3ffffff;
+    /* k = 4 */
+    lo = Math.imul(al4, bl0);
+    mid = Math.imul(al4, bh0);
+    mid = (mid + Math.imul(ah4, bl0)) | 0;
+    hi = Math.imul(ah4, bh0);
+    lo = (lo + Math.imul(al3, bl1)) | 0;
+    mid = (mid + Math.imul(al3, bh1)) | 0;
+    mid = (mid + Math.imul(ah3, bl1)) | 0;
+    hi = (hi + Math.imul(ah3, bh1)) | 0;
+    lo = (lo + Math.imul(al2, bl2)) | 0;
+    mid = (mid + Math.imul(al2, bh2)) | 0;
+    mid = (mid + Math.imul(ah2, bl2)) | 0;
+    hi = (hi + Math.imul(ah2, bh2)) | 0;
+    lo = (lo + Math.imul(al1, bl3)) | 0;
+    mid = (mid + Math.imul(al1, bh3)) | 0;
+    mid = (mid + Math.imul(ah1, bl3)) | 0;
+    hi = (hi + Math.imul(ah1, bh3)) | 0;
+    lo = (lo + Math.imul(al0, bl4)) | 0;
+    mid = (mid + Math.imul(al0, bh4)) | 0;
+    mid = (mid + Math.imul(ah0, bl4)) | 0;
+    hi = (hi + Math.imul(ah0, bh4)) | 0;
+    var w4 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w4 >>> 26)) | 0;
+    w4 &= 0x3ffffff;
+    /* k = 5 */
+    lo = Math.imul(al5, bl0);
+    mid = Math.imul(al5, bh0);
+    mid = (mid + Math.imul(ah5, bl0)) | 0;
+    hi = Math.imul(ah5, bh0);
+    lo = (lo + Math.imul(al4, bl1)) | 0;
+    mid = (mid + Math.imul(al4, bh1)) | 0;
+    mid = (mid + Math.imul(ah4, bl1)) | 0;
+    hi = (hi + Math.imul(ah4, bh1)) | 0;
+    lo = (lo + Math.imul(al3, bl2)) | 0;
+    mid = (mid + Math.imul(al3, bh2)) | 0;
+    mid = (mid + Math.imul(ah3, bl2)) | 0;
+    hi = (hi + Math.imul(ah3, bh2)) | 0;
+    lo = (lo + Math.imul(al2, bl3)) | 0;
+    mid = (mid + Math.imul(al2, bh3)) | 0;
+    mid = (mid + Math.imul(ah2, bl3)) | 0;
+    hi = (hi + Math.imul(ah2, bh3)) | 0;
+    lo = (lo + Math.imul(al1, bl4)) | 0;
+    mid = (mid + Math.imul(al1, bh4)) | 0;
+    mid = (mid + Math.imul(ah1, bl4)) | 0;
+    hi = (hi + Math.imul(ah1, bh4)) | 0;
+    lo = (lo + Math.imul(al0, bl5)) | 0;
+    mid = (mid + Math.imul(al0, bh5)) | 0;
+    mid = (mid + Math.imul(ah0, bl5)) | 0;
+    hi = (hi + Math.imul(ah0, bh5)) | 0;
+    var w5 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w5 >>> 26)) | 0;
+    w5 &= 0x3ffffff;
+    /* k = 6 */
+    lo = Math.imul(al6, bl0);
+    mid = Math.imul(al6, bh0);
+    mid = (mid + Math.imul(ah6, bl0)) | 0;
+    hi = Math.imul(ah6, bh0);
+    lo = (lo + Math.imul(al5, bl1)) | 0;
+    mid = (mid + Math.imul(al5, bh1)) | 0;
+    mid = (mid + Math.imul(ah5, bl1)) | 0;
+    hi = (hi + Math.imul(ah5, bh1)) | 0;
+    lo = (lo + Math.imul(al4, bl2)) | 0;
+    mid = (mid + Math.imul(al4, bh2)) | 0;
+    mid = (mid + Math.imul(ah4, bl2)) | 0;
+    hi = (hi + Math.imul(ah4, bh2)) | 0;
+    lo = (lo + Math.imul(al3, bl3)) | 0;
+    mid = (mid + Math.imul(al3, bh3)) | 0;
+    mid = (mid + Math.imul(ah3, bl3)) | 0;
+    hi = (hi + Math.imul(ah3, bh3)) | 0;
+    lo = (lo + Math.imul(al2, bl4)) | 0;
+    mid = (mid + Math.imul(al2, bh4)) | 0;
+    mid = (mid + Math.imul(ah2, bl4)) | 0;
+    hi = (hi + Math.imul(ah2, bh4)) | 0;
+    lo = (lo + Math.imul(al1, bl5)) | 0;
+    mid = (mid + Math.imul(al1, bh5)) | 0;
+    mid = (mid + Math.imul(ah1, bl5)) | 0;
+    hi = (hi + Math.imul(ah1, bh5)) | 0;
+    lo = (lo + Math.imul(al0, bl6)) | 0;
+    mid = (mid + Math.imul(al0, bh6)) | 0;
+    mid = (mid + Math.imul(ah0, bl6)) | 0;
+    hi = (hi + Math.imul(ah0, bh6)) | 0;
+    var w6 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w6 >>> 26)) | 0;
+    w6 &= 0x3ffffff;
+    /* k = 7 */
+    lo = Math.imul(al7, bl0);
+    mid = Math.imul(al7, bh0);
+    mid = (mid + Math.imul(ah7, bl0)) | 0;
+    hi = Math.imul(ah7, bh0);
+    lo = (lo + Math.imul(al6, bl1)) | 0;
+    mid = (mid + Math.imul(al6, bh1)) | 0;
+    mid = (mid + Math.imul(ah6, bl1)) | 0;
+    hi = (hi + Math.imul(ah6, bh1)) | 0;
+    lo = (lo + Math.imul(al5, bl2)) | 0;
+    mid = (mid + Math.imul(al5, bh2)) | 0;
+    mid = (mid + Math.imul(ah5, bl2)) | 0;
+    hi = (hi + Math.imul(ah5, bh2)) | 0;
+    lo = (lo + Math.imul(al4, bl3)) | 0;
+    mid = (mid + Math.imul(al4, bh3)) | 0;
+    mid = (mid + Math.imul(ah4, bl3)) | 0;
+    hi = (hi + Math.imul(ah4, bh3)) | 0;
+    lo = (lo + Math.imul(al3, bl4)) | 0;
+    mid = (mid + Math.imul(al3, bh4)) | 0;
+    mid = (mid + Math.imul(ah3, bl4)) | 0;
+    hi = (hi + Math.imul(ah3, bh4)) | 0;
+    lo = (lo + Math.imul(al2, bl5)) | 0;
+    mid = (mid + Math.imul(al2, bh5)) | 0;
+    mid = (mid + Math.imul(ah2, bl5)) | 0;
+    hi = (hi + Math.imul(ah2, bh5)) | 0;
+    lo = (lo + Math.imul(al1, bl6)) | 0;
+    mid = (mid + Math.imul(al1, bh6)) | 0;
+    mid = (mid + Math.imul(ah1, bl6)) | 0;
+    hi = (hi + Math.imul(ah1, bh6)) | 0;
+    lo = (lo + Math.imul(al0, bl7)) | 0;
+    mid = (mid + Math.imul(al0, bh7)) | 0;
+    mid = (mid + Math.imul(ah0, bl7)) | 0;
+    hi = (hi + Math.imul(ah0, bh7)) | 0;
+    var w7 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w7 >>> 26)) | 0;
+    w7 &= 0x3ffffff;
+    /* k = 8 */
+    lo = Math.imul(al8, bl0);
+    mid = Math.imul(al8, bh0);
+    mid = (mid + Math.imul(ah8, bl0)) | 0;
+    hi = Math.imul(ah8, bh0);
+    lo = (lo + Math.imul(al7, bl1)) | 0;
+    mid = (mid + Math.imul(al7, bh1)) | 0;
+    mid = (mid + Math.imul(ah7, bl1)) | 0;
+    hi = (hi + Math.imul(ah7, bh1)) | 0;
+    lo = (lo + Math.imul(al6, bl2)) | 0;
+    mid = (mid + Math.imul(al6, bh2)) | 0;
+    mid = (mid + Math.imul(ah6, bl2)) | 0;
+    hi = (hi + Math.imul(ah6, bh2)) | 0;
+    lo = (lo + Math.imul(al5, bl3)) | 0;
+    mid = (mid + Math.imul(al5, bh3)) | 0;
+    mid = (mid + Math.imul(ah5, bl3)) | 0;
+    hi = (hi + Math.imul(ah5, bh3)) | 0;
+    lo = (lo + Math.imul(al4, bl4)) | 0;
+    mid = (mid + Math.imul(al4, bh4)) | 0;
+    mid = (mid + Math.imul(ah4, bl4)) | 0;
+    hi = (hi + Math.imul(ah4, bh4)) | 0;
+    lo = (lo + Math.imul(al3, bl5)) | 0;
+    mid = (mid + Math.imul(al3, bh5)) | 0;
+    mid = (mid + Math.imul(ah3, bl5)) | 0;
+    hi = (hi + Math.imul(ah3, bh5)) | 0;
+    lo = (lo + Math.imul(al2, bl6)) | 0;
+    mid = (mid + Math.imul(al2, bh6)) | 0;
+    mid = (mid + Math.imul(ah2, bl6)) | 0;
+    hi = (hi + Math.imul(ah2, bh6)) | 0;
+    lo = (lo + Math.imul(al1, bl7)) | 0;
+    mid = (mid + Math.imul(al1, bh7)) | 0;
+    mid = (mid + Math.imul(ah1, bl7)) | 0;
+    hi = (hi + Math.imul(ah1, bh7)) | 0;
+    lo = (lo + Math.imul(al0, bl8)) | 0;
+    mid = (mid + Math.imul(al0, bh8)) | 0;
+    mid = (mid + Math.imul(ah0, bl8)) | 0;
+    hi = (hi + Math.imul(ah0, bh8)) | 0;
+    var w8 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w8 >>> 26)) | 0;
+    w8 &= 0x3ffffff;
+    /* k = 9 */
+    lo = Math.imul(al9, bl0);
+    mid = Math.imul(al9, bh0);
+    mid = (mid + Math.imul(ah9, bl0)) | 0;
+    hi = Math.imul(ah9, bh0);
+    lo = (lo + Math.imul(al8, bl1)) | 0;
+    mid = (mid + Math.imul(al8, bh1)) | 0;
+    mid = (mid + Math.imul(ah8, bl1)) | 0;
+    hi = (hi + Math.imul(ah8, bh1)) | 0;
+    lo = (lo + Math.imul(al7, bl2)) | 0;
+    mid = (mid + Math.imul(al7, bh2)) | 0;
+    mid = (mid + Math.imul(ah7, bl2)) | 0;
+    hi = (hi + Math.imul(ah7, bh2)) | 0;
+    lo = (lo + Math.imul(al6, bl3)) | 0;
+    mid = (mid + Math.imul(al6, bh3)) | 0;
+    mid = (mid + Math.imul(ah6, bl3)) | 0;
+    hi = (hi + Math.imul(ah6, bh3)) | 0;
+    lo = (lo + Math.imul(al5, bl4)) | 0;
+    mid = (mid + Math.imul(al5, bh4)) | 0;
+    mid = (mid + Math.imul(ah5, bl4)) | 0;
+    hi = (hi + Math.imul(ah5, bh4)) | 0;
+    lo = (lo + Math.imul(al4, bl5)) | 0;
+    mid = (mid + Math.imul(al4, bh5)) | 0;
+    mid = (mid + Math.imul(ah4, bl5)) | 0;
+    hi = (hi + Math.imul(ah4, bh5)) | 0;
+    lo = (lo + Math.imul(al3, bl6)) | 0;
+    mid = (mid + Math.imul(al3, bh6)) | 0;
+    mid = (mid + Math.imul(ah3, bl6)) | 0;
+    hi = (hi + Math.imul(ah3, bh6)) | 0;
+    lo = (lo + Math.imul(al2, bl7)) | 0;
+    mid = (mid + Math.imul(al2, bh7)) | 0;
+    mid = (mid + Math.imul(ah2, bl7)) | 0;
+    hi = (hi + Math.imul(ah2, bh7)) | 0;
+    lo = (lo + Math.imul(al1, bl8)) | 0;
+    mid = (mid + Math.imul(al1, bh8)) | 0;
+    mid = (mid + Math.imul(ah1, bl8)) | 0;
+    hi = (hi + Math.imul(ah1, bh8)) | 0;
+    lo = (lo + Math.imul(al0, bl9)) | 0;
+    mid = (mid + Math.imul(al0, bh9)) | 0;
+    mid = (mid + Math.imul(ah0, bl9)) | 0;
+    hi = (hi + Math.imul(ah0, bh9)) | 0;
+    var w9 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w9 >>> 26)) | 0;
+    w9 &= 0x3ffffff;
+    /* k = 10 */
+    lo = Math.imul(al9, bl1);
+    mid = Math.imul(al9, bh1);
+    mid = (mid + Math.imul(ah9, bl1)) | 0;
+    hi = Math.imul(ah9, bh1);
+    lo = (lo + Math.imul(al8, bl2)) | 0;
+    mid = (mid + Math.imul(al8, bh2)) | 0;
+    mid = (mid + Math.imul(ah8, bl2)) | 0;
+    hi = (hi + Math.imul(ah8, bh2)) | 0;
+    lo = (lo + Math.imul(al7, bl3)) | 0;
+    mid = (mid + Math.imul(al7, bh3)) | 0;
+    mid = (mid + Math.imul(ah7, bl3)) | 0;
+    hi = (hi + Math.imul(ah7, bh3)) | 0;
+    lo = (lo + Math.imul(al6, bl4)) | 0;
+    mid = (mid + Math.imul(al6, bh4)) | 0;
+    mid = (mid + Math.imul(ah6, bl4)) | 0;
+    hi = (hi + Math.imul(ah6, bh4)) | 0;
+    lo = (lo + Math.imul(al5, bl5)) | 0;
+    mid = (mid + Math.imul(al5, bh5)) | 0;
+    mid = (mid + Math.imul(ah5, bl5)) | 0;
+    hi = (hi + Math.imul(ah5, bh5)) | 0;
+    lo = (lo + Math.imul(al4, bl6)) | 0;
+    mid = (mid + Math.imul(al4, bh6)) | 0;
+    mid = (mid + Math.imul(ah4, bl6)) | 0;
+    hi = (hi + Math.imul(ah4, bh6)) | 0;
+    lo = (lo + Math.imul(al3, bl7)) | 0;
+    mid = (mid + Math.imul(al3, bh7)) | 0;
+    mid = (mid + Math.imul(ah3, bl7)) | 0;
+    hi = (hi + Math.imul(ah3, bh7)) | 0;
+    lo = (lo + Math.imul(al2, bl8)) | 0;
+    mid = (mid + Math.imul(al2, bh8)) | 0;
+    mid = (mid + Math.imul(ah2, bl8)) | 0;
+    hi = (hi + Math.imul(ah2, bh8)) | 0;
+    lo = (lo + Math.imul(al1, bl9)) | 0;
+    mid = (mid + Math.imul(al1, bh9)) | 0;
+    mid = (mid + Math.imul(ah1, bl9)) | 0;
+    hi = (hi + Math.imul(ah1, bh9)) | 0;
+    var w10 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w10 >>> 26)) | 0;
+    w10 &= 0x3ffffff;
+    /* k = 11 */
+    lo = Math.imul(al9, bl2);
+    mid = Math.imul(al9, bh2);
+    mid = (mid + Math.imul(ah9, bl2)) | 0;
+    hi = Math.imul(ah9, bh2);
+    lo = (lo + Math.imul(al8, bl3)) | 0;
+    mid = (mid + Math.imul(al8, bh3)) | 0;
+    mid = (mid + Math.imul(ah8, bl3)) | 0;
+    hi = (hi + Math.imul(ah8, bh3)) | 0;
+    lo = (lo + Math.imul(al7, bl4)) | 0;
+    mid = (mid + Math.imul(al7, bh4)) | 0;
+    mid = (mid + Math.imul(ah7, bl4)) | 0;
+    hi = (hi + Math.imul(ah7, bh4)) | 0;
+    lo = (lo + Math.imul(al6, bl5)) | 0;
+    mid = (mid + Math.imul(al6, bh5)) | 0;
+    mid = (mid + Math.imul(ah6, bl5)) | 0;
+    hi = (hi + Math.imul(ah6, bh5)) | 0;
+    lo = (lo + Math.imul(al5, bl6)) | 0;
+    mid = (mid + Math.imul(al5, bh6)) | 0;
+    mid = (mid + Math.imul(ah5, bl6)) | 0;
+    hi = (hi + Math.imul(ah5, bh6)) | 0;
+    lo = (lo + Math.imul(al4, bl7)) | 0;
+    mid = (mid + Math.imul(al4, bh7)) | 0;
+    mid = (mid + Math.imul(ah4, bl7)) | 0;
+    hi = (hi + Math.imul(ah4, bh7)) | 0;
+    lo = (lo + Math.imul(al3, bl8)) | 0;
+    mid = (mid + Math.imul(al3, bh8)) | 0;
+    mid = (mid + Math.imul(ah3, bl8)) | 0;
+    hi = (hi + Math.imul(ah3, bh8)) | 0;
+    lo = (lo + Math.imul(al2, bl9)) | 0;
+    mid = (mid + Math.imul(al2, bh9)) | 0;
+    mid = (mid + Math.imul(ah2, bl9)) | 0;
+    hi = (hi + Math.imul(ah2, bh9)) | 0;
+    var w11 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w11 >>> 26)) | 0;
+    w11 &= 0x3ffffff;
+    /* k = 12 */
+    lo = Math.imul(al9, bl3);
+    mid = Math.imul(al9, bh3);
+    mid = (mid + Math.imul(ah9, bl3)) | 0;
+    hi = Math.imul(ah9, bh3);
+    lo = (lo + Math.imul(al8, bl4)) | 0;
+    mid = (mid + Math.imul(al8, bh4)) | 0;
+    mid = (mid + Math.imul(ah8, bl4)) | 0;
+    hi = (hi + Math.imul(ah8, bh4)) | 0;
+    lo = (lo + Math.imul(al7, bl5)) | 0;
+    mid = (mid + Math.imul(al7, bh5)) | 0;
+    mid = (mid + Math.imul(ah7, bl5)) | 0;
+    hi = (hi + Math.imul(ah7, bh5)) | 0;
+    lo = (lo + Math.imul(al6, bl6)) | 0;
+    mid = (mid + Math.imul(al6, bh6)) | 0;
+    mid = (mid + Math.imul(ah6, bl6)) | 0;
+    hi = (hi + Math.imul(ah6, bh6)) | 0;
+    lo = (lo + Math.imul(al5, bl7)) | 0;
+    mid = (mid + Math.imul(al5, bh7)) | 0;
+    mid = (mid + Math.imul(ah5, bl7)) | 0;
+    hi = (hi + Math.imul(ah5, bh7)) | 0;
+    lo = (lo + Math.imul(al4, bl8)) | 0;
+    mid = (mid + Math.imul(al4, bh8)) | 0;
+    mid = (mid + Math.imul(ah4, bl8)) | 0;
+    hi = (hi + Math.imul(ah4, bh8)) | 0;
+    lo = (lo + Math.imul(al3, bl9)) | 0;
+    mid = (mid + Math.imul(al3, bh9)) | 0;
+    mid = (mid + Math.imul(ah3, bl9)) | 0;
+    hi = (hi + Math.imul(ah3, bh9)) | 0;
+    var w12 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w12 >>> 26)) | 0;
+    w12 &= 0x3ffffff;
+    /* k = 13 */
+    lo = Math.imul(al9, bl4);
+    mid = Math.imul(al9, bh4);
+    mid = (mid + Math.imul(ah9, bl4)) | 0;
+    hi = Math.imul(ah9, bh4);
+    lo = (lo + Math.imul(al8, bl5)) | 0;
+    mid = (mid + Math.imul(al8, bh5)) | 0;
+    mid = (mid + Math.imul(ah8, bl5)) | 0;
+    hi = (hi + Math.imul(ah8, bh5)) | 0;
+    lo = (lo + Math.imul(al7, bl6)) | 0;
+    mid = (mid + Math.imul(al7, bh6)) | 0;
+    mid = (mid + Math.imul(ah7, bl6)) | 0;
+    hi = (hi + Math.imul(ah7, bh6)) | 0;
+    lo = (lo + Math.imul(al6, bl7)) | 0;
+    mid = (mid + Math.imul(al6, bh7)) | 0;
+    mid = (mid + Math.imul(ah6, bl7)) | 0;
+    hi = (hi + Math.imul(ah6, bh7)) | 0;
+    lo = (lo + Math.imul(al5, bl8)) | 0;
+    mid = (mid + Math.imul(al5, bh8)) | 0;
+    mid = (mid + Math.imul(ah5, bl8)) | 0;
+    hi = (hi + Math.imul(ah5, bh8)) | 0;
+    lo = (lo + Math.imul(al4, bl9)) | 0;
+    mid = (mid + Math.imul(al4, bh9)) | 0;
+    mid = (mid + Math.imul(ah4, bl9)) | 0;
+    hi = (hi + Math.imul(ah4, bh9)) | 0;
+    var w13 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w13 >>> 26)) | 0;
+    w13 &= 0x3ffffff;
+    /* k = 14 */
+    lo = Math.imul(al9, bl5);
+    mid = Math.imul(al9, bh5);
+    mid = (mid + Math.imul(ah9, bl5)) | 0;
+    hi = Math.imul(ah9, bh5);
+    lo = (lo + Math.imul(al8, bl6)) | 0;
+    mid = (mid + Math.imul(al8, bh6)) | 0;
+    mid = (mid + Math.imul(ah8, bl6)) | 0;
+    hi = (hi + Math.imul(ah8, bh6)) | 0;
+    lo = (lo + Math.imul(al7, bl7)) | 0;
+    mid = (mid + Math.imul(al7, bh7)) | 0;
+    mid = (mid + Math.imul(ah7, bl7)) | 0;
+    hi = (hi + Math.imul(ah7, bh7)) | 0;
+    lo = (lo + Math.imul(al6, bl8)) | 0;
+    mid = (mid + Math.imul(al6, bh8)) | 0;
+    mid = (mid + Math.imul(ah6, bl8)) | 0;
+    hi = (hi + Math.imul(ah6, bh8)) | 0;
+    lo = (lo + Math.imul(al5, bl9)) | 0;
+    mid = (mid + Math.imul(al5, bh9)) | 0;
+    mid = (mid + Math.imul(ah5, bl9)) | 0;
+    hi = (hi + Math.imul(ah5, bh9)) | 0;
+    var w14 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w14 >>> 26)) | 0;
+    w14 &= 0x3ffffff;
+    /* k = 15 */
+    lo = Math.imul(al9, bl6);
+    mid = Math.imul(al9, bh6);
+    mid = (mid + Math.imul(ah9, bl6)) | 0;
+    hi = Math.imul(ah9, bh6);
+    lo = (lo + Math.imul(al8, bl7)) | 0;
+    mid = (mid + Math.imul(al8, bh7)) | 0;
+    mid = (mid + Math.imul(ah8, bl7)) | 0;
+    hi = (hi + Math.imul(ah8, bh7)) | 0;
+    lo = (lo + Math.imul(al7, bl8)) | 0;
+    mid = (mid + Math.imul(al7, bh8)) | 0;
+    mid = (mid + Math.imul(ah7, bl8)) | 0;
+    hi = (hi + Math.imul(ah7, bh8)) | 0;
+    lo = (lo + Math.imul(al6, bl9)) | 0;
+    mid = (mid + Math.imul(al6, bh9)) | 0;
+    mid = (mid + Math.imul(ah6, bl9)) | 0;
+    hi = (hi + Math.imul(ah6, bh9)) | 0;
+    var w15 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w15 >>> 26)) | 0;
+    w15 &= 0x3ffffff;
+    /* k = 16 */
+    lo = Math.imul(al9, bl7);
+    mid = Math.imul(al9, bh7);
+    mid = (mid + Math.imul(ah9, bl7)) | 0;
+    hi = Math.imul(ah9, bh7);
+    lo = (lo + Math.imul(al8, bl8)) | 0;
+    mid = (mid + Math.imul(al8, bh8)) | 0;
+    mid = (mid + Math.imul(ah8, bl8)) | 0;
+    hi = (hi + Math.imul(ah8, bh8)) | 0;
+    lo = (lo + Math.imul(al7, bl9)) | 0;
+    mid = (mid + Math.imul(al7, bh9)) | 0;
+    mid = (mid + Math.imul(ah7, bl9)) | 0;
+    hi = (hi + Math.imul(ah7, bh9)) | 0;
+    var w16 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w16 >>> 26)) | 0;
+    w16 &= 0x3ffffff;
+    /* k = 17 */
+    lo = Math.imul(al9, bl8);
+    mid = Math.imul(al9, bh8);
+    mid = (mid + Math.imul(ah9, bl8)) | 0;
+    hi = Math.imul(ah9, bh8);
+    lo = (lo + Math.imul(al8, bl9)) | 0;
+    mid = (mid + Math.imul(al8, bh9)) | 0;
+    mid = (mid + Math.imul(ah8, bl9)) | 0;
+    hi = (hi + Math.imul(ah8, bh9)) | 0;
+    var w17 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w17 >>> 26)) | 0;
+    w17 &= 0x3ffffff;
+    /* k = 18 */
+    lo = Math.imul(al9, bl9);
+    mid = Math.imul(al9, bh9);
+    mid = (mid + Math.imul(ah9, bl9)) | 0;
+    hi = Math.imul(ah9, bh9);
+    var w18 = (((c + lo) | 0) + ((mid & 0x1fff) << 13)) | 0;
+    c = (((hi + (mid >>> 13)) | 0) + (w18 >>> 26)) | 0;
+    w18 &= 0x3ffffff;
+    o[0] = w0;
+    o[1] = w1;
+    o[2] = w2;
+    o[3] = w3;
+    o[4] = w4;
+    o[5] = w5;
+    o[6] = w6;
+    o[7] = w7;
+    o[8] = w8;
+    o[9] = w9;
+    o[10] = w10;
+    o[11] = w11;
+    o[12] = w12;
+    o[13] = w13;
+    o[14] = w14;
+    o[15] = w15;
+    o[16] = w16;
+    o[17] = w17;
+    o[18] = w18;
+    if (c !== 0) {
+      o[19] = c;
+      out.length++;
+    }
+    return out;
+  };
+
+  // Polyfill comb
+  if (!Math.imul) {
+    comb10MulTo = smallMulTo;
+  }
+
+  function bigMulTo (self, num, out) {
+    out.negative = num.negative ^ self.negative;
+    out.length = self.length + num.length;
+
+    var carry = 0;
+    var hncarry = 0;
+    for (var k = 0; k < out.length - 1; k++) {
+      // Sum all words with the same `i + j = k` and accumulate `ncarry`,
+      // note that ncarry could be >= 0x3ffffff
+      var ncarry = hncarry;
+      hncarry = 0;
+      var rword = carry & 0x3ffffff;
+      var maxJ = Math.min(k, num.length - 1);
+      for (var j = Math.max(0, k - self.length + 1); j <= maxJ; j++) {
+        var i = k - j;
+        var a = self.words[i] | 0;
+        var b = num.words[j] | 0;
+        var r = a * b;
+
+        var lo = r & 0x3ffffff;
+        ncarry = (ncarry + ((r / 0x4000000) | 0)) | 0;
+        lo = (lo + rword) | 0;
+        rword = lo & 0x3ffffff;
+        ncarry = (ncarry + (lo >>> 26)) | 0;
+
+        hncarry += ncarry >>> 26;
+        ncarry &= 0x3ffffff;
+      }
+      out.words[k] = rword;
+      carry = ncarry;
+      ncarry = hncarry;
+    }
+    if (carry !== 0) {
+      out.words[k] = carry;
+    } else {
+      out.length--;
+    }
+
+    return out._strip();
+  }
+
+  function jumboMulTo (self, num, out) {
+    // Temporary disable, see https://github.com/indutny/bn.js/issues/211
+    // var fftm = new FFTM();
+    // return fftm.mulp(self, num, out);
+    return bigMulTo(self, num, out);
+  }
+
+  BN.prototype.mulTo = function mulTo (num, out) {
+    var res;
+    var len = this.length + num.length;
+    if (this.length === 10 && num.length === 10) {
+      res = comb10MulTo(this, num, out);
+    } else if (len < 63) {
+      res = smallMulTo(this, num, out);
+    } else if (len < 1024) {
+      res = bigMulTo(this, num, out);
+    } else {
+      res = jumboMulTo(this, num, out);
+    }
+
+    return res;
+  };
+
+  // Cooley-Tukey algorithm for FFT
+  // slightly revisited to rely on looping instead of recursion
+
+  function FFTM (x, y) {
+    this.x = x;
+    this.y = y;
+  }
+
+  FFTM.prototype.makeRBT = function makeRBT (N) {
+    var t = new Array(N);
+    var l = BN.prototype._countBits(N) - 1;
+    for (var i = 0; i < N; i++) {
+      t[i] = this.revBin(i, l, N);
+    }
+
+    return t;
+  };
+
+  // Returns binary-reversed representation of `x`
+  FFTM.prototype.revBin = function revBin (x, l, N) {
+    if (x === 0 || x === N - 1) return x;
+
+    var rb = 0;
+    for (var i = 0; i < l; i++) {
+      rb |= (x & 1) << (l - i - 1);
+      x >>= 1;
+    }
+
+    return rb;
+  };
+
+  // Performs "tweedling" phase, therefore 'emulating'
+  // behaviour of the recursive algorithm
+  FFTM.prototype.permute = function permute (rbt, rws, iws, rtws, itws, N) {
+    for (var i = 0; i < N; i++) {
+      rtws[i] = rws[rbt[i]];
+      itws[i] = iws[rbt[i]];
+    }
+  };
+
+  FFTM.prototype.transform = function transform (rws, iws, rtws, itws, N, rbt) {
+    this.permute(rbt, rws, iws, rtws, itws, N);
+
+    for (var s = 1; s < N; s <<= 1) {
+      var l = s << 1;
+
+      var rtwdf = Math.cos(2 * Math.PI / l);
+      var itwdf = Math.sin(2 * Math.PI / l);
+
+      for (var p = 0; p < N; p += l) {
+        var rtwdf_ = rtwdf;
+        var itwdf_ = itwdf;
+
+        for (var j = 0; j < s; j++) {
+          var re = rtws[p + j];
+          var ie = itws[p + j];
+
+          var ro = rtws[p + j + s];
+          var io = itws[p + j + s];
+
+          var rx = rtwdf_ * ro - itwdf_ * io;
+
+          io = rtwdf_ * io + itwdf_ * ro;
+          ro = rx;
+
+          rtws[p + j] = re + ro;
+          itws[p + j] = ie + io;
+
+          rtws[p + j + s] = re - ro;
+          itws[p + j + s] = ie - io;
+
+          /* jshint maxdepth : false */
+          if (j !== l) {
+            rx = rtwdf * rtwdf_ - itwdf * itwdf_;
+
+            itwdf_ = rtwdf * itwdf_ + itwdf * rtwdf_;
+            rtwdf_ = rx;
+          }
+        }
+      }
+    }
+  };
+
+  FFTM.prototype.guessLen13b = function guessLen13b (n, m) {
+    var N = Math.max(m, n) | 1;
+    var odd = N & 1;
+    var i = 0;
+    for (N = N / 2 | 0; N; N = N >>> 1) {
+      i++;
+    }
+
+    return 1 << i + 1 + odd;
+  };
+
+  FFTM.prototype.conjugate = function conjugate (rws, iws, N) {
+    if (N <= 1) return;
+
+    for (var i = 0; i < N / 2; i++) {
+      var t = rws[i];
+
+      rws[i] = rws[N - i - 1];
+      rws[N - i - 1] = t;
+
+      t = iws[i];
+
+      iws[i] = -iws[N - i - 1];
+      iws[N - i - 1] = -t;
+    }
+  };
+
+  FFTM.prototype.normalize13b = function normalize13b (ws, N) {
+    var carry = 0;
+    for (var i = 0; i < N / 2; i++) {
+      var w = Math.round(ws[2 * i + 1] / N) * 0x2000 +
+        Math.round(ws[2 * i] / N) +
+        carry;
+
+      ws[i] = w & 0x3ffffff;
+
+      if (w < 0x4000000) {
+        carry = 0;
+      } else {
+        carry = w / 0x4000000 | 0;
+      }
+    }
+
+    return ws;
+  };
+
+  FFTM.prototype.convert13b = function convert13b (ws, len, rws, N) {
+    var carry = 0;
+    for (var i = 0; i < len; i++) {
+      carry = carry + (ws[i] | 0);
+
+      rws[2 * i] = carry & 0x1fff; carry = carry >>> 13;
+      rws[2 * i + 1] = carry & 0x1fff; carry = carry >>> 13;
+    }
+
+    // Pad with zeroes
+    for (i = 2 * len; i < N; ++i) {
+      rws[i] = 0;
+    }
+
+    assert(carry === 0);
+    assert((carry & ~0x1fff) === 0);
+  };
+
+  FFTM.prototype.stub = function stub (N) {
+    var ph = new Array(N);
+    for (var i = 0; i < N; i++) {
+      ph[i] = 0;
+    }
+
+    return ph;
+  };
+
+  FFTM.prototype.mulp = function mulp (x, y, out) {
+    var N = 2 * this.guessLen13b(x.length, y.length);
+
+    var rbt = this.makeRBT(N);
+
+    var _ = this.stub(N);
+
+    var rws = new Array(N);
+    var rwst = new Array(N);
+    var iwst = new Array(N);
+
+    var nrws = new Array(N);
+    var nrwst = new Array(N);
+    var niwst = new Array(N);
+
+    var rmws = out.words;
+    rmws.length = N;
+
+    this.convert13b(x.words, x.length, rws, N);
+    this.convert13b(y.words, y.length, nrws, N);
+
+    this.transform(rws, _, rwst, iwst, N, rbt);
+    this.transform(nrws, _, nrwst, niwst, N, rbt);
+
+    for (var i = 0; i < N; i++) {
+      var rx = rwst[i] * nrwst[i] - iwst[i] * niwst[i];
+      iwst[i] = rwst[i] * niwst[i] + iwst[i] * nrwst[i];
+      rwst[i] = rx;
+    }
+
+    this.conjugate(rwst, iwst, N);
+    this.transform(rwst, iwst, rmws, _, N, rbt);
+    this.conjugate(rmws, _, N);
+    this.normalize13b(rmws, N);
+
+    out.negative = x.negative ^ y.negative;
+    out.length = x.length + y.length;
+    return out._strip();
+  };
+
+  // Multiply `this` by `num`
+  BN.prototype.mul = function mul (num) {
+    var out = new BN(null);
+    out.words = new Array(this.length + num.length);
+    return this.mulTo(num, out);
+  };
+
+  // Multiply employing FFT
+  BN.prototype.mulf = function mulf (num) {
+    var out = new BN(null);
+    out.words = new Array(this.length + num.length);
+    return jumboMulTo(this, num, out);
+  };
+
+  // In-place Multiplication
+  BN.prototype.imul = function imul (num) {
+    return this.clone().mulTo(num, this);
+  };
+
+  BN.prototype.imuln = function imuln (num) {
+    var isNegNum = num < 0;
+    if (isNegNum) num = -num;
+
+    assert(typeof num === 'number');
+    assert(num < 0x4000000);
+
+    // Carry
+    var carry = 0;
+    for (var i = 0; i < this.length; i++) {
+      var w = (this.words[i] | 0) * num;
+      var lo = (w & 0x3ffffff) + (carry & 0x3ffffff);
+      carry >>= 26;
+      carry += (w / 0x4000000) | 0;
+      // NOTE: lo is 27bit maximum
+      carry += lo >>> 26;
+      this.words[i] = lo & 0x3ffffff;
+    }
+
+    if (carry !== 0) {
+      this.words[i] = carry;
+      this.length++;
+    }
+
+    return isNegNum ? this.ineg() : this;
+  };
+
+  BN.prototype.muln = function muln (num) {
+    return this.clone().imuln(num);
+  };
+
+  // `this` * `this`
+  BN.prototype.sqr = function sqr () {
+    return this.mul(this);
+  };
+
+  // `this` * `this` in-place
+  BN.prototype.isqr = function isqr () {
+    return this.imul(this.clone());
+  };
+
+  // Math.pow(`this`, `num`)
+  BN.prototype.pow = function pow (num) {
+    var w = toBitArray(num);
+    if (w.length === 0) return new BN(1);
+
+    // Skip leading zeroes
+    var res = this;
+    for (var i = 0; i < w.length; i++, res = res.sqr()) {
+      if (w[i] !== 0) break;
+    }
+
+    if (++i < w.length) {
+      for (var q = res.sqr(); i < w.length; i++, q = q.sqr()) {
+        if (w[i] === 0) continue;
+
+        res = res.mul(q);
+      }
+    }
+
+    return res;
+  };
+
+  // Shift-left in-place
+  BN.prototype.iushln = function iushln (bits) {
+    assert(typeof bits === 'number' && bits >= 0);
+    var r = bits % 26;
+    var s = (bits - r) / 26;
+    var carryMask = (0x3ffffff >>> (26 - r)) << (26 - r);
+    var i;
+
+    if (r !== 0) {
+      var carry = 0;
+
+      for (i = 0; i < this.length; i++) {
+        var newCarry = this.words[i] & carryMask;
+        var c = ((this.words[i] | 0) - newCarry) << r;
+        this.words[i] = c | carry;
+        carry = newCarry >>> (26 - r);
+      }
+
+      if (carry) {
+        this.words[i] = carry;
+        this.length++;
+      }
+    }
+
+    if (s !== 0) {
+      for (i = this.length - 1; i >= 0; i--) {
+        this.words[i + s] = this.words[i];
+      }
+
+      for (i = 0; i < s; i++) {
+        this.words[i] = 0;
+      }
+
+      this.length += s;
+    }
+
+    return this._strip();
+  };
+
+  BN.prototype.ishln = function ishln (bits) {
+    // TODO(indutny): implement me
+    assert(this.negative === 0);
+    return this.iushln(bits);
+  };
+
+  // Shift-right in-place
+  // NOTE: `hint` is a lowest bit before trailing zeroes
+  // NOTE: if `extended` is present - it will be filled with destroyed bits
+  BN.prototype.iushrn = function iushrn (bits, hint, extended) {
+    assert(typeof bits === 'number' && bits >= 0);
+    var h;
+    if (hint) {
+      h = (hint - (hint % 26)) / 26;
+    } else {
+      h = 0;
+    }
+
+    var r = bits % 26;
+    var s = Math.min((bits - r) / 26, this.length);
+    var mask = 0x3ffffff ^ ((0x3ffffff >>> r) << r);
+    var maskedWords = extended;
+
+    h -= s;
+    h = Math.max(0, h);
+
+    // Extended mode, copy masked part
+    if (maskedWords) {
+      for (var i = 0; i < s; i++) {
+        maskedWords.words[i] = this.words[i];
+      }
+      maskedWords.length = s;
+    }
+
+    if (s === 0) {
+      // No-op, we should not move anything at all
+    } else if (this.length > s) {
+      this.length -= s;
+      for (i = 0; i < this.length; i++) {
+        this.words[i] = this.words[i + s];
+      }
+    } else {
+      this.words[0] = 0;
+      this.length = 1;
+    }
+
+    var carry = 0;
+    for (i = this.length - 1; i >= 0 && (carry !== 0 || i >= h); i--) {
+      var word = this.words[i] | 0;
+      this.words[i] = (carry << (26 - r)) | (word >>> r);
+      carry = word & mask;
+    }
+
+    // Push carried bits as a mask
+    if (maskedWords && carry !== 0) {
+      maskedWords.words[maskedWords.length++] = carry;
+    }
+
+    if (this.length === 0) {
+      this.words[0] = 0;
+      this.length = 1;
+    }
+
+    return this._strip();
+  };
+
+  BN.prototype.ishrn = function ishrn (bits, hint, extended) {
+    // TODO(indutny): implement me
+    assert(this.negative === 0);
+    return this.iushrn(bits, hint, extended);
+  };
+
+  // Shift-left
+  BN.prototype.shln = function shln (bits) {
+    return this.clone().ishln(bits);
+  };
+
+  BN.prototype.ushln = function ushln (bits) {
+    return this.clone().iushln(bits);
+  };
+
+  // Shift-right
+  BN.prototype.shrn = function shrn (bits) {
+    return this.clone().ishrn(bits);
+  };
+
+  BN.prototype.ushrn = function ushrn (bits) {
+    return this.clone().iushrn(bits);
+  };
+
+  // Test if n bit is set
+  BN.prototype.testn = function testn (bit) {
+    assert(typeof bit === 'number' && bit >= 0);
+    var r = bit % 26;
+    var s = (bit - r) / 26;
+    var q = 1 << r;
+
+    // Fast case: bit is much higher than all existing words
+    if (this.length <= s) return false;
+
+    // Check bit and return
+    var w = this.words[s];
+
+    return !!(w & q);
+  };
+
+  // Return only lowers bits of number (in-place)
+  BN.prototype.imaskn = function imaskn (bits) {
+    assert(typeof bits === 'number' && bits >= 0);
+    var r = bits % 26;
+    var s = (bits - r) / 26;
+
+    assert(this.negative === 0, 'imaskn works only with positive numbers');
+
+    if (this.length <= s) {
+      return this;
+    }
+
+    if (r !== 0) {
+      s++;
+    }
+    this.length = Math.min(s, this.length);
+
+    if (r !== 0) {
+      var mask = 0x3ffffff ^ ((0x3ffffff >>> r) << r);
+      this.words[this.length - 1] &= mask;
+    }
+
+    return this._strip();
+  };
+
+  // Return only lowers bits of number
+  BN.prototype.maskn = function maskn (bits) {
+    return this.clone().imaskn(bits);
+  };
+
+  // Add plain number `num` to `this`
+  BN.prototype.iaddn = function iaddn (num) {
+    assert(typeof num === 'number');
+    assert(num < 0x4000000);
+    if (num < 0) return this.isubn(-num);
+
+    // Possible sign change
+    if (this.negative !== 0) {
+      if (this.length === 1 && (this.words[0] | 0) <= num) {
+        this.words[0] = num - (this.words[0] | 0);
+        this.negative = 0;
+        return this;
+      }
+
+      this.negative = 0;
+      this.isubn(num);
+      this.negative = 1;
+      return this;
+    }
+
+    // Add without checks
+    return this._iaddn(num);
+  };
+
+  BN.prototype._iaddn = function _iaddn (num) {
+    this.words[0] += num;
+
+    // Carry
+    for (var i = 0; i < this.length && this.words[i] >= 0x4000000; i++) {
+      this.words[i] -= 0x4000000;
+      if (i === this.length - 1) {
+        this.words[i + 1] = 1;
+      } else {
+        this.words[i + 1]++;
+      }
+    }
+    this.length = Math.max(this.length, i + 1);
+
+    return this;
+  };
+
+  // Subtract plain number `num` from `this`
+  BN.prototype.isubn = function isubn (num) {
+    assert(typeof num === 'number');
+    assert(num < 0x4000000);
+    if (num < 0) return this.iaddn(-num);
+
+    if (this.negative !== 0) {
+      this.negative = 0;
+      this.iaddn(num);
+      this.negative = 1;
+      return this;
+    }
+
+    this.words[0] -= num;
+
+    if (this.length === 1 && this.words[0] < 0) {
+      this.words[0] = -this.words[0];
+      this.negative = 1;
+    } else {
+      // Carry
+      for (var i = 0; i < this.length && this.words[i] < 0; i++) {
+        this.words[i] += 0x4000000;
+        this.words[i + 1] -= 1;
+      }
+    }
+
+    return this._strip();
+  };
+
+  BN.prototype.addn = function addn (num) {
+    return this.clone().iaddn(num);
+  };
+
+  BN.prototype.subn = function subn (num) {
+    return this.clone().isubn(num);
+  };
+
+  BN.prototype.iabs = function iabs () {
+    this.negative = 0;
+
+    return this;
+  };
+
+  BN.prototype.abs = function abs () {
+    return this.clone().iabs();
+  };
+
+  BN.prototype._ishlnsubmul = function _ishlnsubmul (num, mul, shift) {
+    var len = num.length + shift;
+    var i;
+
+    this._expand(len);
+
+    var w;
+    var carry = 0;
+    for (i = 0; i < num.length; i++) {
+      w = (this.words[i + shift] | 0) + carry;
+      var right = (num.words[i] | 0) * mul;
+      w -= right & 0x3ffffff;
+      carry = (w >> 26) - ((right / 0x4000000) | 0);
+      this.words[i + shift] = w & 0x3ffffff;
+    }
+    for (; i < this.length - shift; i++) {
+      w = (this.words[i + shift] | 0) + carry;
+      carry = w >> 26;
+      this.words[i + shift] = w & 0x3ffffff;
+    }
+
+    if (carry === 0) return this._strip();
+
+    // Subtraction overflow
+    assert(carry === -1);
+    carry = 0;
+    for (i = 0; i < this.length; i++) {
+      w = -(this.words[i] | 0) + carry;
+      carry = w >> 26;
+      this.words[i] = w & 0x3ffffff;
+    }
+    this.negative = 1;
+
+    return this._strip();
+  };
+
+  BN.prototype._wordDiv = function _wordDiv (num, mode) {
+    var shift = this.length - num.length;
+
+    var a = this.clone();
+    var b = num;
+
+    // Normalize
+    var bhi = b.words[b.length - 1] | 0;
+    var bhiBits = this._countBits(bhi);
+    shift = 26 - bhiBits;
+    if (shift !== 0) {
+      b = b.ushln(shift);
+      a.iushln(shift);
+      bhi = b.words[b.length - 1] | 0;
+    }
+
+    // Initialize quotient
+    var m = a.length - b.length;
+    var q;
+
+    if (mode !== 'mod') {
+      q = new BN(null);
+      q.length = m + 1;
+      q.words = new Array(q.length);
+      for (var i = 0; i < q.length; i++) {
+        q.words[i] = 0;
+      }
+    }
+
+    var diff = a.clone()._ishlnsubmul(b, 1, m);
+    if (diff.negative === 0) {
+      a = diff;
+      if (q) {
+        q.words[m] = 1;
+      }
+    }
+
+    for (var j = m - 1; j >= 0; j--) {
+      var qj = (a.words[b.length + j] | 0) * 0x4000000 +
+        (a.words[b.length + j - 1] | 0);
+
+      // NOTE: (qj / bhi) is (0x3ffffff * 0x4000000 + 0x3ffffff) / 0x2000000 max
+      // (0x7ffffff)
+      qj = Math.min((qj / bhi) | 0, 0x3ffffff);
+
+      a._ishlnsubmul(b, qj, j);
+      while (a.negative !== 0) {
+        qj--;
+        a.negative = 0;
+        a._ishlnsubmul(b, 1, j);
+        if (!a.isZero()) {
+          a.negative ^= 1;
+        }
+      }
+      if (q) {
+        q.words[j] = qj;
+      }
+    }
+    if (q) {
+      q._strip();
+    }
+    a._strip();
+
+    // Denormalize
+    if (mode !== 'div' && shift !== 0) {
+      a.iushrn(shift);
+    }
+
+    return {
+      div: q || null,
+      mod: a
+    };
+  };
+
+  // NOTE: 1) `mode` can be set to `mod` to request mod only,
+  //       to `div` to request div only, or be absent to
+  //       request both div & mod
+  //       2) `positive` is true if unsigned mod is requested
+  BN.prototype.divmod = function divmod (num, mode, positive) {
+    assert(!num.isZero());
+
+    if (this.isZero()) {
+      return {
+        div: new BN(0),
+        mod: new BN(0)
+      };
+    }
+
+    var div, mod, res;
+    if (this.negative !== 0 && num.negative === 0) {
+      res = this.neg().divmod(num, mode);
+
+      if (mode !== 'mod') {
+        div = res.div.neg();
+      }
+
+      if (mode !== 'div') {
+        mod = res.mod.neg();
+        if (positive && mod.negative !== 0) {
+          mod.iadd(num);
+        }
+      }
+
+      return {
+        div: div,
+        mod: mod
+      };
+    }
+
+    if (this.negative === 0 && num.negative !== 0) {
+      res = this.divmod(num.neg(), mode);
+
+      if (mode !== 'mod') {
+        div = res.div.neg();
+      }
+
+      return {
+        div: div,
+        mod: res.mod
+      };
+    }
+
+    if ((this.negative & num.negative) !== 0) {
+      res = this.neg().divmod(num.neg(), mode);
+
+      if (mode !== 'div') {
+        mod = res.mod.neg();
+        if (positive && mod.negative !== 0) {
+          mod.isub(num);
+        }
+      }
+
+      return {
+        div: res.div,
+        mod: mod
+      };
+    }
+
+    // Both numbers are positive at this point
+
+    // Strip both numbers to approximate shift value
+    if (num.length > this.length || this.cmp(num) < 0) {
+      return {
+        div: new BN(0),
+        mod: this
+      };
+    }
+
+    // Very short reduction
+    if (num.length === 1) {
+      if (mode === 'div') {
+        return {
+          div: this.divn(num.words[0]),
+          mod: null
+        };
+      }
+
+      if (mode === 'mod') {
+        return {
+          div: null,
+          mod: new BN(this.modrn(num.words[0]))
+        };
+      }
+
+      return {
+        div: this.divn(num.words[0]),
+        mod: new BN(this.modrn(num.words[0]))
+      };
+    }
+
+    return this._wordDiv(num, mode);
+  };
+
+  // Find `this` / `num`
+  BN.prototype.div = function div (num) {
+    return this.divmod(num, 'div', false).div;
+  };
+
+  // Find `this` % `num`
+  BN.prototype.mod = function mod (num) {
+    return this.divmod(num, 'mod', false).mod;
+  };
+
+  BN.prototype.umod = function umod (num) {
+    return this.divmod(num, 'mod', true).mod;
+  };
+
+  // Find Round(`this` / `num`)
+  BN.prototype.divRound = function divRound (num) {
+    var dm = this.divmod(num);
+
+    // Fast case - exact division
+    if (dm.mod.isZero()) return dm.div;
+
+    var mod = dm.div.negative !== 0 ? dm.mod.isub(num) : dm.mod;
+
+    var half = num.ushrn(1);
+    var r2 = num.andln(1);
+    var cmp = mod.cmp(half);
+
+    // Round down
+    if (cmp < 0 || (r2 === 1 && cmp === 0)) return dm.div;
+
+    // Round up
+    return dm.div.negative !== 0 ? dm.div.isubn(1) : dm.div.iaddn(1);
+  };
+
+  BN.prototype.modrn = function modrn (num) {
+    var isNegNum = num < 0;
+    if (isNegNum) num = -num;
+
+    assert(num <= 0x3ffffff);
+    var p = (1 << 26) % num;
+
+    var acc = 0;
+    for (var i = this.length - 1; i >= 0; i--) {
+      acc = (p * acc + (this.words[i] | 0)) % num;
+    }
+
+    return isNegNum ? -acc : acc;
+  };
+
+  // WARNING: DEPRECATED
+  BN.prototype.modn = function modn (num) {
+    return this.modrn(num);
+  };
+
+  // In-place division by number
+  BN.prototype.idivn = function idivn (num) {
+    var isNegNum = num < 0;
+    if (isNegNum) num = -num;
+
+    assert(num <= 0x3ffffff);
+
+    var carry = 0;
+    for (var i = this.length - 1; i >= 0; i--) {
+      var w = (this.words[i] | 0) + carry * 0x4000000;
+      this.words[i] = (w / num) | 0;
+      carry = w % num;
+    }
+
+    this._strip();
+    return isNegNum ? this.ineg() : this;
+  };
+
+  BN.prototype.divn = function divn (num) {
+    return this.clone().idivn(num);
+  };
+
+  BN.prototype.egcd = function egcd (p) {
+    assert(p.negative === 0);
+    assert(!p.isZero());
+
+    var x = this;
+    var y = p.clone();
+
+    if (x.negative !== 0) {
+      x = x.umod(p);
+    } else {
+      x = x.clone();
+    }
+
+    // A * x + B * y = x
+    var A = new BN(1);
+    var B = new BN(0);
+
+    // C * x + D * y = y
+    var C = new BN(0);
+    var D = new BN(1);
+
+    var g = 0;
+
+    while (x.isEven() && y.isEven()) {
+      x.iushrn(1);
+      y.iushrn(1);
+      ++g;
+    }
+
+    var yp = y.clone();
+    var xp = x.clone();
+
+    while (!x.isZero()) {
+      for (var i = 0, im = 1; (x.words[0] & im) === 0 && i < 26; ++i, im <<= 1);
+      if (i > 0) {
+        x.iushrn(i);
+        while (i-- > 0) {
+          if (A.isOdd() || B.isOdd()) {
+            A.iadd(yp);
+            B.isub(xp);
+          }
+
+          A.iushrn(1);
+          B.iushrn(1);
+        }
+      }
+
+      for (var j = 0, jm = 1; (y.words[0] & jm) === 0 && j < 26; ++j, jm <<= 1);
+      if (j > 0) {
+        y.iushrn(j);
+        while (j-- > 0) {
+          if (C.isOdd() || D.isOdd()) {
+            C.iadd(yp);
+            D.isub(xp);
+          }
+
+          C.iushrn(1);
+          D.iushrn(1);
+        }
+      }
+
+      if (x.cmp(y) >= 0) {
+        x.isub(y);
+        A.isub(C);
+        B.isub(D);
+      } else {
+        y.isub(x);
+        C.isub(A);
+        D.isub(B);
+      }
+    }
+
+    return {
+      a: C,
+      b: D,
+      gcd: y.iushln(g)
+    };
+  };
+
+  // This is reduced incarnation of the binary EEA
+  // above, designated to invert members of the
+  // _prime_ fields F(p) at a maximal speed
+  BN.prototype._invmp = function _invmp (p) {
+    assert(p.negative === 0);
+    assert(!p.isZero());
+
+    var a = this;
+    var b = p.clone();
+
+    if (a.negative !== 0) {
+      a = a.umod(p);
+    } else {
+      a = a.clone();
+    }
+
+    var x1 = new BN(1);
+    var x2 = new BN(0);
+
+    var delta = b.clone();
+
+    while (a.cmpn(1) > 0 && b.cmpn(1) > 0) {
+      for (var i = 0, im = 1; (a.words[0] & im) === 0 && i < 26; ++i, im <<= 1);
+      if (i > 0) {
+        a.iushrn(i);
+        while (i-- > 0) {
+          if (x1.isOdd()) {
+            x1.iadd(delta);
+          }
+
+          x1.iushrn(1);
+        }
+      }
+
+      for (var j = 0, jm = 1; (b.words[0] & jm) === 0 && j < 26; ++j, jm <<= 1);
+      if (j > 0) {
+        b.iushrn(j);
+        while (j-- > 0) {
+          if (x2.isOdd()) {
+            x2.iadd(delta);
+          }
+
+          x2.iushrn(1);
+        }
+      }
+
+      if (a.cmp(b) >= 0) {
+        a.isub(b);
+        x1.isub(x2);
+      } else {
+        b.isub(a);
+        x2.isub(x1);
+      }
+    }
+
+    var res;
+    if (a.cmpn(1) === 0) {
+      res = x1;
+    } else {
+      res = x2;
+    }
+
+    if (res.cmpn(0) < 0) {
+      res.iadd(p);
+    }
+
+    return res;
+  };
+
+  BN.prototype.gcd = function gcd (num) {
+    if (this.isZero()) return num.abs();
+    if (num.isZero()) return this.abs();
+
+    var a = this.clone();
+    var b = num.clone();
+    a.negative = 0;
+    b.negative = 0;
+
+    // Remove common factor of two
+    for (var shift = 0; a.isEven() && b.isEven(); shift++) {
+      a.iushrn(1);
+      b.iushrn(1);
+    }
+
+    do {
+      while (a.isEven()) {
+        a.iushrn(1);
+      }
+      while (b.isEven()) {
+        b.iushrn(1);
+      }
+
+      var r = a.cmp(b);
+      if (r < 0) {
+        // Swap `a` and `b` to make `a` always bigger than `b`
+        var t = a;
+        a = b;
+        b = t;
+      } else if (r === 0 || b.cmpn(1) === 0) {
+        break;
+      }
+
+      a.isub(b);
+    } while (true);
+
+    return b.iushln(shift);
+  };
+
+  // Invert number in the field F(num)
+  BN.prototype.invm = function invm (num) {
+    return this.egcd(num).a.umod(num);
+  };
+
+  BN.prototype.isEven = function isEven () {
+    return (this.words[0] & 1) === 0;
+  };
+
+  BN.prototype.isOdd = function isOdd () {
+    return (this.words[0] & 1) === 1;
+  };
+
+  // And first word and num
+  BN.prototype.andln = function andln (num) {
+    return this.words[0] & num;
+  };
+
+  // Increment at the bit position in-line
+  BN.prototype.bincn = function bincn (bit) {
+    assert(typeof bit === 'number');
+    var r = bit % 26;
+    var s = (bit - r) / 26;
+    var q = 1 << r;
+
+    // Fast case: bit is much higher than all existing words
+    if (this.length <= s) {
+      this._expand(s + 1);
+      this.words[s] |= q;
+      return this;
+    }
+
+    // Add bit and propagate, if needed
+    var carry = q;
+    for (var i = s; carry !== 0 && i < this.length; i++) {
+      var w = this.words[i] | 0;
+      w += carry;
+      carry = w >>> 26;
+      w &= 0x3ffffff;
+      this.words[i] = w;
+    }
+    if (carry !== 0) {
+      this.words[i] = carry;
+      this.length++;
+    }
+    return this;
+  };
+
+  BN.prototype.isZero = function isZero () {
+    return this.length === 1 && this.words[0] === 0;
+  };
+
+  BN.prototype.cmpn = function cmpn (num) {
+    var negative = num < 0;
+
+    if (this.negative !== 0 && !negative) return -1;
+    if (this.negative === 0 && negative) return 1;
+
+    this._strip();
+
+    var res;
+    if (this.length > 1) {
+      res = 1;
+    } else {
+      if (negative) {
+        num = -num;
+      }
+
+      assert(num <= 0x3ffffff, 'Number is too big');
+
+      var w = this.words[0] | 0;
+      res = w === num ? 0 : w < num ? -1 : 1;
+    }
+    if (this.negative !== 0) return -res | 0;
+    return res;
+  };
+
+  // Compare two numbers and return:
+  // 1 - if `this` > `num`
+  // 0 - if `this` == `num`
+  // -1 - if `this` < `num`
+  BN.prototype.cmp = function cmp (num) {
+    if (this.negative !== 0 && num.negative === 0) return -1;
+    if (this.negative === 0 && num.negative !== 0) return 1;
+
+    var res = this.ucmp(num);
+    if (this.negative !== 0) return -res | 0;
+    return res;
+  };
+
+  // Unsigned comparison
+  BN.prototype.ucmp = function ucmp (num) {
+    // At this point both numbers have the same sign
+    if (this.length > num.length) return 1;
+    if (this.length < num.length) return -1;
+
+    var res = 0;
+    for (var i = this.length - 1; i >= 0; i--) {
+      var a = this.words[i] | 0;
+      var b = num.words[i] | 0;
+
+      if (a === b) continue;
+      if (a < b) {
+        res = -1;
+      } else if (a > b) {
+        res = 1;
+      }
+      break;
+    }
+    return res;
+  };
+
+  BN.prototype.gtn = function gtn (num) {
+    return this.cmpn(num) === 1;
+  };
+
+  BN.prototype.gt = function gt (num) {
+    return this.cmp(num) === 1;
+  };
+
+  BN.prototype.gten = function gten (num) {
+    return this.cmpn(num) >= 0;
+  };
+
+  BN.prototype.gte = function gte (num) {
+    return this.cmp(num) >= 0;
+  };
+
+  BN.prototype.ltn = function ltn (num) {
+    return this.cmpn(num) === -1;
+  };
+
+  BN.prototype.lt = function lt (num) {
+    return this.cmp(num) === -1;
+  };
+
+  BN.prototype.lten = function lten (num) {
+    return this.cmpn(num) <= 0;
+  };
+
+  BN.prototype.lte = function lte (num) {
+    return this.cmp(num) <= 0;
+  };
+
+  BN.prototype.eqn = function eqn (num) {
+    return this.cmpn(num) === 0;
+  };
+
+  BN.prototype.eq = function eq (num) {
+    return this.cmp(num) === 0;
+  };
+
+  //
+  // A reduce context, could be using montgomery or something better, depending
+  // on the `m` itself.
+  //
+  BN.red = function red (num) {
+    return new Red(num);
+  };
+
+  BN.prototype.toRed = function toRed (ctx) {
+    assert(!this.red, 'Already a number in reduction context');
+    assert(this.negative === 0, 'red works only with positives');
+    return ctx.convertTo(this)._forceRed(ctx);
+  };
+
+  BN.prototype.fromRed = function fromRed () {
+    assert(this.red, 'fromRed works only with numbers in reduction context');
+    return this.red.convertFrom(this);
+  };
+
+  BN.prototype._forceRed = function _forceRed (ctx) {
+    this.red = ctx;
+    return this;
+  };
+
+  BN.prototype.forceRed = function forceRed (ctx) {
+    assert(!this.red, 'Already a number in reduction context');
+    return this._forceRed(ctx);
+  };
+
+  BN.prototype.redAdd = function redAdd (num) {
+    assert(this.red, 'redAdd works only with red numbers');
+    return this.red.add(this, num);
+  };
+
+  BN.prototype.redIAdd = function redIAdd (num) {
+    assert(this.red, 'redIAdd works only with red numbers');
+    return this.red.iadd(this, num);
+  };
+
+  BN.prototype.redSub = function redSub (num) {
+    assert(this.red, 'redSub works only with red numbers');
+    return this.red.sub(this, num);
+  };
+
+  BN.prototype.redISub = function redISub (num) {
+    assert(this.red, 'redISub works only with red numbers');
+    return this.red.isub(this, num);
+  };
+
+  BN.prototype.redShl = function redShl (num) {
+    assert(this.red, 'redShl works only with red numbers');
+    return this.red.shl(this, num);
+  };
+
+  BN.prototype.redMul = function redMul (num) {
+    assert(this.red, 'redMul works only with red numbers');
+    this.red._verify2(this, num);
+    return this.red.mul(this, num);
+  };
+
+  BN.prototype.redIMul = function redIMul (num) {
+    assert(this.red, 'redMul works only with red numbers');
+    this.red._verify2(this, num);
+    return this.red.imul(this, num);
+  };
+
+  BN.prototype.redSqr = function redSqr () {
+    assert(this.red, 'redSqr works only with red numbers');
+    this.red._verify1(this);
+    return this.red.sqr(this);
+  };
+
+  BN.prototype.redISqr = function redISqr () {
+    assert(this.red, 'redISqr works only with red numbers');
+    this.red._verify1(this);
+    return this.red.isqr(this);
+  };
+
+  // Square root over p
+  BN.prototype.redSqrt = function redSqrt () {
+    assert(this.red, 'redSqrt works only with red numbers');
+    this.red._verify1(this);
+    return this.red.sqrt(this);
+  };
+
+  BN.prototype.redInvm = function redInvm () {
+    assert(this.red, 'redInvm works only with red numbers');
+    this.red._verify1(this);
+    return this.red.invm(this);
+  };
+
+  // Return negative clone of `this` % `red modulo`
+  BN.prototype.redNeg = function redNeg () {
+    assert(this.red, 'redNeg works only with red numbers');
+    this.red._verify1(this);
+    return this.red.neg(this);
+  };
+
+  BN.prototype.redPow = function redPow (num) {
+    assert(this.red && !num.red, 'redPow(normalNum)');
+    this.red._verify1(this);
+    return this.red.pow(this, num);
+  };
+
+  // Prime numbers with efficient reduction
+  var primes = {
+    k256: null,
+    p224: null,
+    p192: null,
+    p25519: null
+  };
+
+  // Pseudo-Mersenne prime
+  function MPrime (name, p) {
+    // P = 2 ^ N - K
+    this.name = name;
+    this.p = new BN(p, 16);
+    this.n = this.p.bitLength();
+    this.k = new BN(1).iushln(this.n).isub(this.p);
+
+    this.tmp = this._tmp();
+  }
+
+  MPrime.prototype._tmp = function _tmp () {
+    var tmp = new BN(null);
+    tmp.words = new Array(Math.ceil(this.n / 13));
+    return tmp;
+  };
+
+  MPrime.prototype.ireduce = function ireduce (num) {
+    // Assumes that `num` is less than `P^2`
+    // num = HI * (2 ^ N - K) + HI * K + LO = HI * K + LO (mod P)
+    var r = num;
+    var rlen;
+
+    do {
+      this.split(r, this.tmp);
+      r = this.imulK(r);
+      r = r.iadd(this.tmp);
+      rlen = r.bitLength();
+    } while (rlen > this.n);
+
+    var cmp = rlen < this.n ? -1 : r.ucmp(this.p);
+    if (cmp === 0) {
+      r.words[0] = 0;
+      r.length = 1;
+    } else if (cmp > 0) {
+      r.isub(this.p);
+    } else {
+      if (r.strip !== undefined) {
+        // r is a BN v4 instance
+        r.strip();
+      } else {
+        // r is a BN v5 instance
+        r._strip();
+      }
+    }
+
+    return r;
+  };
+
+  MPrime.prototype.split = function split (input, out) {
+    input.iushrn(this.n, 0, out);
+  };
+
+  MPrime.prototype.imulK = function imulK (num) {
+    return num.imul(this.k);
+  };
+
+  function K256 () {
+    MPrime.call(
+      this,
+      'k256',
+      'ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff fffffffe fffffc2f');
+  }
+  inherits(K256, MPrime);
+
+  K256.prototype.split = function split (input, output) {
+    // 256 = 9 * 26 + 22
+    var mask = 0x3fffff;
+
+    var outLen = Math.min(input.length, 9);
+    for (var i = 0; i < outLen; i++) {
+      output.words[i] = input.words[i];
+    }
+    output.length = outLen;
+
+    if (input.length <= 9) {
+      input.words[0] = 0;
+      input.length = 1;
+      return;
+    }
+
+    // Shift by 9 limbs
+    var prev = input.words[9];
+    output.words[output.length++] = prev & mask;
+
+    for (i = 10; i < input.length; i++) {
+      var next = input.words[i] | 0;
+      input.words[i - 10] = ((next & mask) << 4) | (prev >>> 22);
+      prev = next;
+    }
+    prev >>>= 22;
+    input.words[i - 10] = prev;
+    if (prev === 0 && input.length > 10) {
+      input.length -= 10;
+    } else {
+      input.length -= 9;
+    }
+  };
+
+  K256.prototype.imulK = function imulK (num) {
+    // K = 0x1000003d1 = [ 0x40, 0x3d1 ]
+    num.words[num.length] = 0;
+    num.words[num.length + 1] = 0;
+    num.length += 2;
+
+    // bounded at: 0x40 * 0x3ffffff + 0x3d0 = 0x100000390
+    var lo = 0;
+    for (var i = 0; i < num.length; i++) {
+      var w = num.words[i] | 0;
+      lo += w * 0x3d1;
+      num.words[i] = lo & 0x3ffffff;
+      lo = w * 0x40 + ((lo / 0x4000000) | 0);
+    }
+
+    // Fast length reduction
+    if (num.words[num.length - 1] === 0) {
+      num.length--;
+      if (num.words[num.length - 1] === 0) {
+        num.length--;
+      }
+    }
+    return num;
+  };
+
+  function P224 () {
+    MPrime.call(
+      this,
+      'p224',
+      'ffffffff ffffffff ffffffff ffffffff 00000000 00000000 00000001');
+  }
+  inherits(P224, MPrime);
+
+  function P192 () {
+    MPrime.call(
+      this,
+      'p192',
+      'ffffffff ffffffff ffffffff fffffffe ffffffff ffffffff');
+  }
+  inherits(P192, MPrime);
+
+  function P25519 () {
+    // 2 ^ 255 - 19
+    MPrime.call(
+      this,
+      '25519',
+      '7fffffffffffffff ffffffffffffffff ffffffffffffffff ffffffffffffffed');
+  }
+  inherits(P25519, MPrime);
+
+  P25519.prototype.imulK = function imulK (num) {
+    // K = 0x13
+    var carry = 0;
+    for (var i = 0; i < num.length; i++) {
+      var hi = (num.words[i] | 0) * 0x13 + carry;
+      var lo = hi & 0x3ffffff;
+      hi >>>= 26;
+
+      num.words[i] = lo;
+      carry = hi;
+    }
+    if (carry !== 0) {
+      num.words[num.length++] = carry;
+    }
+    return num;
+  };
+
+  // Exported mostly for testing purposes, use plain name instead
+  BN._prime = function prime (name) {
+    // Cached version of prime
+    if (primes[name]) return primes[name];
+
+    var prime;
+    if (name === 'k256') {
+      prime = new K256();
+    } else if (name === 'p224') {
+      prime = new P224();
+    } else if (name === 'p192') {
+      prime = new P192();
+    } else if (name === 'p25519') {
+      prime = new P25519();
+    } else {
+      throw new Error('Unknown prime ' + name);
+    }
+    primes[name] = prime;
+
+    return prime;
+  };
+
+  //
+  // Base reduction engine
+  //
+  function Red (m) {
+    if (typeof m === 'string') {
+      var prime = BN._prime(m);
+      this.m = prime.p;
+      this.prime = prime;
+    } else {
+      assert(m.gtn(1), 'modulus must be greater than 1');
+      this.m = m;
+      this.prime = null;
+    }
+  }
+
+  Red.prototype._verify1 = function _verify1 (a) {
+    assert(a.negative === 0, 'red works only with positives');
+    assert(a.red, 'red works only with red numbers');
+  };
+
+  Red.prototype._verify2 = function _verify2 (a, b) {
+    assert((a.negative | b.negative) === 0, 'red works only with positives');
+    assert(a.red && a.red === b.red,
+      'red works only with red numbers');
+  };
+
+  Red.prototype.imod = function imod (a) {
+    if (this.prime) return this.prime.ireduce(a)._forceRed(this);
+
+    move(a, a.umod(this.m)._forceRed(this));
+    return a;
+  };
+
+  Red.prototype.neg = function neg (a) {
+    if (a.isZero()) {
+      return a.clone();
+    }
+
+    return this.m.sub(a)._forceRed(this);
+  };
+
+  Red.prototype.add = function add (a, b) {
+    this._verify2(a, b);
+
+    var res = a.add(b);
+    if (res.cmp(this.m) >= 0) {
+      res.isub(this.m);
+    }
+    return res._forceRed(this);
+  };
+
+  Red.prototype.iadd = function iadd (a, b) {
+    this._verify2(a, b);
+
+    var res = a.iadd(b);
+    if (res.cmp(this.m) >= 0) {
+      res.isub(this.m);
+    }
+    return res;
+  };
+
+  Red.prototype.sub = function sub (a, b) {
+    this._verify2(a, b);
+
+    var res = a.sub(b);
+    if (res.cmpn(0) < 0) {
+      res.iadd(this.m);
+    }
+    return res._forceRed(this);
+  };
+
+  Red.prototype.isub = function isub (a, b) {
+    this._verify2(a, b);
+
+    var res = a.isub(b);
+    if (res.cmpn(0) < 0) {
+      res.iadd(this.m);
+    }
+    return res;
+  };
+
+  Red.prototype.shl = function shl (a, num) {
+    this._verify1(a);
+    return this.imod(a.ushln(num));
+  };
+
+  Red.prototype.imul = function imul (a, b) {
+    this._verify2(a, b);
+    return this.imod(a.imul(b));
+  };
+
+  Red.prototype.mul = function mul (a, b) {
+    this._verify2(a, b);
+    return this.imod(a.mul(b));
+  };
+
+  Red.prototype.isqr = function isqr (a) {
+    return this.imul(a, a.clone());
+  };
+
+  Red.prototype.sqr = function sqr (a) {
+    return this.mul(a, a);
+  };
+
+  Red.prototype.sqrt = function sqrt (a) {
+    if (a.isZero()) return a.clone();
+
+    var mod3 = this.m.andln(3);
+    assert(mod3 % 2 === 1);
+
+    // Fast case
+    if (mod3 === 3) {
+      var pow = this.m.add(new BN(1)).iushrn(2);
+      return this.pow(a, pow);
+    }
+
+    // Tonelli-Shanks algorithm (Totally unoptimized and slow)
+    //
+    // Find Q and S, that Q * 2 ^ S = (P - 1)
+    var q = this.m.subn(1);
+    var s = 0;
+    while (!q.isZero() && q.andln(1) === 0) {
+      s++;
+      q.iushrn(1);
+    }
+    assert(!q.isZero());
+
+    var one = new BN(1).toRed(this);
+    var nOne = one.redNeg();
+
+    // Find quadratic non-residue
+    // NOTE: Max is such because of generalized Riemann hypothesis.
+    var lpow = this.m.subn(1).iushrn(1);
+    var z = this.m.bitLength();
+    z = new BN(2 * z * z).toRed(this);
+
+    while (this.pow(z, lpow).cmp(nOne) !== 0) {
+      z.redIAdd(nOne);
+    }
+
+    var c = this.pow(z, q);
+    var r = this.pow(a, q.addn(1).iushrn(1));
+    var t = this.pow(a, q);
+    var m = s;
+    while (t.cmp(one) !== 0) {
+      var tmp = t;
+      for (var i = 0; tmp.cmp(one) !== 0; i++) {
+        tmp = tmp.redSqr();
+      }
+      assert(i < m);
+      var b = this.pow(c, new BN(1).iushln(m - i - 1));
+
+      r = r.redMul(b);
+      c = b.redSqr();
+      t = t.redMul(c);
+      m = i;
+    }
+
+    return r;
+  };
+
+  Red.prototype.invm = function invm (a) {
+    var inv = a._invmp(this.m);
+    if (inv.negative !== 0) {
+      inv.negative = 0;
+      return this.imod(inv).redNeg();
+    } else {
+      return this.imod(inv);
+    }
+  };
+
+  Red.prototype.pow = function pow (a, num) {
+    if (num.isZero()) return new BN(1).toRed(this);
+    if (num.cmpn(1) === 0) return a.clone();
+
+    var windowSize = 4;
+    var wnd = new Array(1 << windowSize);
+    wnd[0] = new BN(1).toRed(this);
+    wnd[1] = a;
+    for (var i = 2; i < wnd.length; i++) {
+      wnd[i] = this.mul(wnd[i - 1], a);
+    }
+
+    var res = wnd[0];
+    var current = 0;
+    var currentLen = 0;
+    var start = num.bitLength() % 26;
+    if (start === 0) {
+      start = 26;
+    }
+
+    for (i = num.length - 1; i >= 0; i--) {
+      var word = num.words[i];
+      for (var j = start - 1; j >= 0; j--) {
+        var bit = (word >> j) & 1;
+        if (res !== wnd[0]) {
+          res = this.sqr(res);
+        }
+
+        if (bit === 0 && current === 0) {
+          currentLen = 0;
+          continue;
+        }
+
+        current <<= 1;
+        current |= bit;
+        currentLen++;
+        if (currentLen !== windowSize && (i !== 0 || j !== 0)) continue;
+
+        res = this.mul(res, wnd[current]);
+        currentLen = 0;
+        current = 0;
+      }
+      start = 26;
+    }
+
+    return res;
+  };
+
+  Red.prototype.convertTo = function convertTo (num) {
+    var r = num.umod(this.m);
+
+    return r === num ? r.clone() : r;
+  };
+
+  Red.prototype.convertFrom = function convertFrom (num) {
+    var res = num.clone();
+    res.red = null;
+    return res;
+  };
+
+  //
+  // Montgomery method engine
+  //
+
+  BN.mont = function mont (num) {
+    return new Mont(num);
+  };
+
+  function Mont (m) {
+    Red.call(this, m);
+
+    this.shift = this.m.bitLength();
+    if (this.shift % 26 !== 0) {
+      this.shift += 26 - (this.shift % 26);
+    }
+
+    this.r = new BN(1).iushln(this.shift);
+    this.r2 = this.imod(this.r.sqr());
+    this.rinv = this.r._invmp(this.m);
+
+    this.minv = this.rinv.mul(this.r).isubn(1).div(this.m);
+    this.minv = this.minv.umod(this.r);
+    this.minv = this.r.sub(this.minv);
+  }
+  inherits(Mont, Red);
+
+  Mont.prototype.convertTo = function convertTo (num) {
+    return this.imod(num.ushln(this.shift));
+  };
+
+  Mont.prototype.convertFrom = function convertFrom (num) {
+    var r = this.imod(num.mul(this.rinv));
+    r.red = null;
+    return r;
+  };
+
+  Mont.prototype.imul = function imul (a, b) {
+    if (a.isZero() || b.isZero()) {
+      a.words[0] = 0;
+      a.length = 1;
+      return a;
+    }
+
+    var t = a.imul(b);
+    var c = t.maskn(this.shift).mul(this.minv).imaskn(this.shift).mul(this.m);
+    var u = t.isub(c).iushrn(this.shift);
+    var res = u;
+
+    if (u.cmp(this.m) >= 0) {
+      res = u.isub(this.m);
+    } else if (u.cmpn(0) < 0) {
+      res = u.iadd(this.m);
+    }
+
+    return res._forceRed(this);
+  };
+
+  Mont.prototype.mul = function mul (a, b) {
+    if (a.isZero() || b.isZero()) return new BN(0)._forceRed(this);
+
+    var t = a.mul(b);
+    var c = t.maskn(this.shift).mul(this.minv).imaskn(this.shift).mul(this.m);
+    var u = t.isub(c).iushrn(this.shift);
+    var res = u;
+    if (u.cmp(this.m) >= 0) {
+      res = u.isub(this.m);
+    } else if (u.cmpn(0) < 0) {
+      res = u.iadd(this.m);
+    }
+
+    return res._forceRed(this);
+  };
+
+  Mont.prototype.invm = function invm (a) {
+    // (AR)^-1 * R^2 = (A^-1 * R^-1) * R^2 = A^-1 * R
+    var res = this.imod(a._invmp(this.m).mul(this.r2));
+    return res._forceRed(this);
+  };
+})(typeof module === 'undefined' || module, this);
+
+},{"buffer":"../node_modules/parcel-bundler/src/builtins/_empty.js"}],"../node_modules/near-api-js/lib/utils/format.js":[function(require,module,exports) {
 "use strict";
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -43242,7 +46792,7 @@ function formatWithCommas(value) {
     return value;
 }
 
-},{"bn.js":"../node_modules/bn.js/lib/bn.js"}],"../node_modules/near-api-js/lib/utils/index.js":[function(require,module,exports) {
+},{"bn.js":"../node_modules/near-api-js/node_modules/bn.js/lib/bn.js"}],"../node_modules/near-api-js/lib/utils/index.js":[function(require,module,exports) {
 "use strict";
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -44319,7 +47869,7 @@ function diffEpochValidators(currentValidators, nextValidators) {
 }
 exports.diffEpochValidators = diffEpochValidators;
 
-},{"bn.js":"../node_modules/bn.js/lib/bn.js"}],"../node_modules/near-api-js/lib/constants.js":[function(require,module,exports) {
+},{"bn.js":"../node_modules/near-api-js/node_modules/bn.js/lib/bn.js"}],"../node_modules/near-api-js/lib/constants.js":[function(require,module,exports) {
 "use strict";
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -44335,7 +47885,7 @@ const bn_js_1 = __importDefault(require("bn.js"));
 // For discussion see https://github.com/nearprotocol/NEPs/issues/67
 exports.DEFAULT_FUNCTION_CALL_GAS = new bn_js_1.default('30000000000000');
 
-},{"bn.js":"../node_modules/bn.js/lib/bn.js"}],"../node_modules/near-api-js/lib/account.js":[function(require,module,exports) {
+},{"bn.js":"../node_modules/near-api-js/node_modules/bn.js/lib/bn.js"}],"../node_modules/near-api-js/lib/account.js":[function(require,module,exports) {
 var Buffer = require("buffer").Buffer;
 "use strict";
 
@@ -44918,7 +48468,7 @@ class Account {
 }
 
 exports.Account = Account;
-},{"bn.js":"../node_modules/bn.js/lib/bn.js","depd":"../node_modules/near-api-js/node_modules/depd/lib/browser/index.js","./transaction":"../node_modules/near-api-js/lib/transaction.js","./providers":"../node_modules/near-api-js/lib/providers/index.js","borsh":"../node_modules/borsh/lib/index.js","./utils/key_pair":"../node_modules/near-api-js/lib/utils/key_pair.js","./utils/errors":"../node_modules/near-api-js/lib/utils/errors.js","./utils/rpc_errors":"../node_modules/near-api-js/lib/utils/rpc_errors.js","./constants":"../node_modules/near-api-js/lib/constants.js","./utils/exponential-backoff":"../node_modules/near-api-js/lib/utils/exponential-backoff.js","buffer":"../node_modules/buffer/index.js"}],"../node_modules/near-api-js/lib/account_multisig.js":[function(require,module,exports) {
+},{"bn.js":"../node_modules/near-api-js/node_modules/bn.js/lib/bn.js","depd":"../node_modules/near-api-js/node_modules/depd/lib/browser/index.js","./transaction":"../node_modules/near-api-js/lib/transaction.js","./providers":"../node_modules/near-api-js/lib/providers/index.js","borsh":"../node_modules/borsh/lib/index.js","./utils/key_pair":"../node_modules/near-api-js/lib/utils/key_pair.js","./utils/errors":"../node_modules/near-api-js/lib/utils/errors.js","./utils/rpc_errors":"../node_modules/near-api-js/lib/utils/rpc_errors.js","./constants":"../node_modules/near-api-js/lib/constants.js","./utils/exponential-backoff":"../node_modules/near-api-js/lib/utils/exponential-backoff.js","buffer":"../node_modules/buffer/index.js"}],"../node_modules/near-api-js/lib/account_multisig.js":[function(require,module,exports) {
 var Buffer = require("buffer").Buffer;
 'use strict';
 var __importDefault = (this && this.__importDefault) || function (mod) {
@@ -45235,7 +48785,7 @@ const convertActions = (actions, accountId, receiverId) => actions.map((a) => {
     return action;
 });
 
-},{"bn.js":"../node_modules/bn.js/lib/bn.js","depd":"../node_modules/near-api-js/node_modules/depd/lib/browser/index.js","./account":"../node_modules/near-api-js/lib/account.js","./utils/format":"../node_modules/near-api-js/lib/utils/format.js","./utils/key_pair":"../node_modules/near-api-js/lib/utils/key_pair.js","./transaction":"../node_modules/near-api-js/lib/transaction.js","./utils/web":"../node_modules/near-api-js/lib/utils/web.js","buffer":"../node_modules/buffer/index.js"}],"../node_modules/near-api-js/lib/account_creator.js":[function(require,module,exports) {
+},{"bn.js":"../node_modules/near-api-js/node_modules/bn.js/lib/bn.js","depd":"../node_modules/near-api-js/node_modules/depd/lib/browser/index.js","./account":"../node_modules/near-api-js/lib/account.js","./utils/format":"../node_modules/near-api-js/lib/utils/format.js","./utils/key_pair":"../node_modules/near-api-js/lib/utils/key_pair.js","./transaction":"../node_modules/near-api-js/lib/transaction.js","./utils/web":"../node_modules/near-api-js/lib/utils/web.js","buffer":"../node_modules/buffer/index.js"}],"../node_modules/near-api-js/lib/account_creator.js":[function(require,module,exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UrlAccountCreator = exports.LocalAccountCreator = exports.AccountCreator = void 0;
@@ -45549,7 +49099,7 @@ function validateBNLike(argMap) {
     }
 }
 
-},{"bn.js":"../node_modules/bn.js/lib/bn.js","depd":"../node_modules/near-api-js/node_modules/depd/lib/browser/index.js","./providers":"../node_modules/near-api-js/lib/providers/index.js","./utils/errors":"../node_modules/near-api-js/lib/utils/errors.js"}],"../node_modules/near-api-js/lib/near.js":[function(require,module,exports) {
+},{"bn.js":"../node_modules/near-api-js/node_modules/bn.js/lib/bn.js","depd":"../node_modules/near-api-js/node_modules/depd/lib/browser/index.js","./providers":"../node_modules/near-api-js/lib/providers/index.js","./utils/errors":"../node_modules/near-api-js/lib/utils/errors.js"}],"../node_modules/near-api-js/lib/near.js":[function(require,module,exports) {
 "use strict";
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -45645,7 +49195,7 @@ class Near {
 }
 exports.Near = Near;
 
-},{"bn.js":"../node_modules/bn.js/lib/bn.js","./account":"../node_modules/near-api-js/lib/account.js","./connection":"../node_modules/near-api-js/lib/connection.js","./contract":"../node_modules/near-api-js/lib/contract.js","./account_creator":"../node_modules/near-api-js/lib/account_creator.js"}],"../node_modules/near-api-js/lib/wallet-account.js":[function(require,module,exports) {
+},{"bn.js":"../node_modules/near-api-js/node_modules/bn.js/lib/bn.js","./account":"../node_modules/near-api-js/lib/account.js","./connection":"../node_modules/near-api-js/lib/connection.js","./contract":"../node_modules/near-api-js/lib/contract.js","./account_creator":"../node_modules/near-api-js/lib/account_creator.js"}],"../node_modules/near-api-js/lib/wallet-account.js":[function(require,module,exports) {
 var Buffer = require("buffer").Buffer;
 "use strict";
 var __importDefault = (this && this.__importDefault) || function (mod) {
@@ -46775,7 +50325,7 @@ __exportStar(require("./browser-connect"), exports);
 require("error-polyfill");
 
 },{"./key_stores/browser-index":"../node_modules/near-api-js/lib/key_stores/browser-index.js","./common-index":"../node_modules/near-api-js/lib/common-index.js","./browser-connect":"../node_modules/near-api-js/lib/browser-connect.js","error-polyfill":"../node_modules/error-polyfill/index.js"}],"config.js":[function(require,module,exports) {
-const CONTRACT_NAME = "dev-1638390926142-39581969932273" || 'rollingrps.melenoidd.testnet';
+const CONTRACT_NAME = "dev-1639418792683-25816324930533" || 'rollingrps.melenoidd.testnet';
 
 function getConfig(env) {
   switch (env) {
@@ -46815,7 +50365,7 @@ function getConfig(env) {
       return {
         networkId: 'local',
         nodeUrl: 'http://localhost:3030',
-        keyPath: `${"C:\\Users\\FRY"}/.near/validator_key.json`,
+        keyPath: `${"C:\\Users\\Mele\xF1ongas"}/.near/validator_key.json`,
         walletUrl: 'http://localhost:4000/wallet',
         contractName: CONTRACT_NAME
       };
@@ -46891,11 +50441,12 @@ function logout() {
 }
 
 function login() {
+  //frys comment check git
   // Allow the current app to make calls to the specified contract on the
   // user's behalf.
   // This works by creating a new access key for the user's account and storing
   // the private key in localStorage.
-  window.walletConnection.requestSignIn();
+  window.walletConnection.requestSignIn('');
 }
 },{"near-api-js":"../node_modules/near-api-js/lib/browser-index.js","./config":"config.js"}],"../node_modules/parcel-bundler/src/builtins/bundle-url.js":[function(require,module,exports) {
 var bundleURL = null;
@@ -46969,7 +50520,7 @@ var reloadCSS = require('_css_loader');
 
 module.hot.dispose(reloadCSS);
 module.hot.accept(reloadCSS);
-},{"./assets\\bgimg.jpg":[["bgimg.b6ad0d73.jpg","assets/bgimg.jpg"],"assets/bgimg.jpg"],"_css_loader":"../node_modules/parcel-bundler/src/builtins/css-loader.js"}],"../node_modules/bootstrap/dist/css/bootstrap.min.css":[function(require,module,exports) {
+},{"./assets\\bgimg2.jpeg":[["bgimg2.666cb345.jpeg","assets/bgimg2.jpeg"],"assets/bgimg2.jpeg"],"_css_loader":"../node_modules/parcel-bundler/src/builtins/css-loader.js"}],"../node_modules/bootstrap/dist/css/bootstrap.min.css":[function(require,module,exports) {
 
         var reloadCSS = require('_css_loader');
         module.hot.dispose(reloadCSS);
@@ -66174,10 +69725,10 @@ const Metadata = props => {
   }, []);
   return /*#__PURE__*/_react.default.createElement("div", {
     style: {
+      margin: 'auto',
       marginTop: '5%',
-      marginLeft: '30%',
-      marginRight: '35%',
-      width: '430px'
+      width: '50%',
+      opacity: '0.65'
     }
   }, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Table, {
     striped: true,
@@ -66198,6 +69749,8 @@ Object.defineProperty(exports, "__esModule", {
 exports.default = void 0;
 
 var _react = _interopRequireWildcard(require("react"));
+
+var _utils = require("/utils.js");
 
 var _propTypes = _interopRequireDefault(require("prop-types"));
 
@@ -66223,7 +69776,7 @@ const SendTokens = props => {
   const sendGift = async () => {
     let getState = await window.account.state();
     let getAmount = await window.utils.format.formatNearAmount(getState.amount);
-    let enteredValue = ValueInput.current.valuesSent;
+    let enteredValue = ValueInput.current.value;
 
     if (Number(getAmount) > Number(enteredValue)) {
       await window.account.sendMoney(Recipient.current.value, window.utils.format.parseNearAmount(enteredValue)).then(await window.contract.addFunds({
@@ -66245,6 +69798,8 @@ const SendTokens = props => {
       let Data = await window.account.state();
       changeBalance(Data.amount);
     }
+
+    getData();
   }, [balance]); //Load
 
   (0, _react.useEffect)(() => {
@@ -66274,21 +69829,38 @@ const SendTokens = props => {
 
   return /*#__PURE__*/_react.default.createElement(_reactBootstrap.Container, {
     style: {
-      marginTop: '5%',
+      marginTop: '3%',
       marginLeft: '30%',
       marginRight: '30%',
-      width: '430px'
+      width: '35.70%',
+      opacity: '0.65',
+      marginBottom: '120px'
     }
   }, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Row, {
-    className: "d-flex justify-content-center"
-  }, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card, null, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Header, null, "Near Token Balance"), /*#__PURE__*/_react.default.createElement(_reactBootstrap.ListGroup, {
+    className: "d-flex justify-content-center "
+  }, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card, {
+    style: {
+      marginBottom: '30px',
+      background: 'none',
+      color: 'white'
+    }
+  }, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Header, null, "Near Token Balance"), /*#__PURE__*/_react.default.createElement(_reactBootstrap.ListGroup, {
     variant: "flush"
   }, /*#__PURE__*/_react.default.createElement(_reactBootstrap.ListGroup.Item, null, formatOutput(window.utils.format.formatNearAmount(String(balance))), " Near")))), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Row, {
-    className: "d-flex justify-content-center"
-  }, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card, null, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Header, {
+    className: "d-flex justify-content-center",
+    style: {
+      marginTop: '34px'
+    }
+  }, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card, {
+    style: {
+      background: 'none',
+      color: 'white',
+      marginTop: '30px'
+    }
+  }, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Header, {
     className: "d-flex justify-content-center"
   }, "Send Money to Friend"), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Body, {
-    className: "d-flex justify-content-center"
+    className: "d-flex justify-content-center "
   }, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Container, null, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Row, null, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Col, null, /*#__PURE__*/_react.default.createElement("input", {
     type: "text",
     placeholder: "Enter Recipient's Name",
@@ -66299,11 +69871,11 @@ const SendTokens = props => {
     ref: ValueInput
   })), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Col, null, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Button, {
     onClick: sendGift
-  }, "Submit"))), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Row, {
+  }, "Send Money"))), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Row, {
     className: "d-flex justify-content-center"
   }, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Table, {
     style: {
-      marginTop: "10px"
+      marginTop: "24px"
     },
     striped: true,
     bordered: true,
@@ -66315,13 +69887,6369 @@ const SendTokens = props => {
     return /*#__PURE__*/_react.default.createElement("tr", {
       key: x
     }, /*#__PURE__*/_react.default.createElement("td", null, x), /*#__PURE__*/_react.default.createElement("td", null, `${valuesSent[index]} Near`));
-  }))))))), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card, null)));
+  })))))))));
 };
 
 SendTokens.propTypes = {};
 var _default = SendTokens;
 exports.default = _default;
-},{"react":"../node_modules/react/index.js","prop-types":"../node_modules/prop-types/index.js","regenerator-runtime":"../node_modules/regenerator-runtime/runtime.js","react-bootstrap":"../node_modules/react-bootstrap/esm/index.js"}],"App.js":[function(require,module,exports) {
+},{"react":"../node_modules/react/index.js","/utils.js":"utils.js","prop-types":"../node_modules/prop-types/index.js","regenerator-runtime":"../node_modules/regenerator-runtime/runtime.js","react-bootstrap":"../node_modules/react-bootstrap/esm/index.js"}],"../node_modules/clsx/dist/clsx.m.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = _default;
+
+function toVal(mix) {
+  var k,
+      y,
+      str = '';
+
+  if (typeof mix === 'string' || typeof mix === 'number') {
+    str += mix;
+  } else if (typeof mix === 'object') {
+    if (Array.isArray(mix)) {
+      for (k = 0; k < mix.length; k++) {
+        if (mix[k]) {
+          if (y = toVal(mix[k])) {
+            str && (str += ' ');
+            str += y;
+          }
+        }
+      }
+    } else {
+      for (k in mix) {
+        if (mix[k]) {
+          str && (str += ' ');
+          str += k;
+        }
+      }
+    }
+  }
+
+  return str;
+}
+
+function _default() {
+  var i = 0,
+      tmp,
+      x,
+      str = '';
+
+  while (i < arguments.length) {
+    if (tmp = arguments[i++]) {
+      if (x = toVal(tmp)) {
+        str && (str += ' ');
+        str += x;
+      }
+    }
+  }
+
+  return str;
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/Manager.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.Manager = Manager;
+exports.ManagerReferenceNodeSetterContext = exports.ManagerReferenceNodeContext = void 0;
+
+var React = _interopRequireWildcard(require("react"));
+
+function _getRequireWildcardCache(nodeInterop) { if (typeof WeakMap !== "function") return null; var cacheBabelInterop = new WeakMap(); var cacheNodeInterop = new WeakMap(); return (_getRequireWildcardCache = function (nodeInterop) { return nodeInterop ? cacheNodeInterop : cacheBabelInterop; })(nodeInterop); }
+
+function _interopRequireWildcard(obj, nodeInterop) { if (!nodeInterop && obj && obj.__esModule) { return obj; } if (obj === null || typeof obj !== "object" && typeof obj !== "function") { return { default: obj }; } var cache = _getRequireWildcardCache(nodeInterop); if (cache && cache.has(obj)) { return cache.get(obj); } var newObj = {}; var hasPropertyDescriptor = Object.defineProperty && Object.getOwnPropertyDescriptor; for (var key in obj) { if (key !== "default" && Object.prototype.hasOwnProperty.call(obj, key)) { var desc = hasPropertyDescriptor ? Object.getOwnPropertyDescriptor(obj, key) : null; if (desc && (desc.get || desc.set)) { Object.defineProperty(newObj, key, desc); } else { newObj[key] = obj[key]; } } } newObj.default = obj; if (cache) { cache.set(obj, newObj); } return newObj; }
+
+var ManagerReferenceNodeContext = React.createContext();
+exports.ManagerReferenceNodeContext = ManagerReferenceNodeContext;
+var ManagerReferenceNodeSetterContext = React.createContext();
+exports.ManagerReferenceNodeSetterContext = ManagerReferenceNodeSetterContext;
+
+function Manager(_ref) {
+  var children = _ref.children;
+
+  var _React$useState = React.useState(null),
+      referenceNode = _React$useState[0],
+      setReferenceNode = _React$useState[1];
+
+  React.useEffect(function () {
+    return function () {
+      setReferenceNode(null);
+    };
+  }, [setReferenceNode]);
+  return /*#__PURE__*/React.createElement(ManagerReferenceNodeContext.Provider, {
+    value: referenceNode
+  }, /*#__PURE__*/React.createElement(ManagerReferenceNodeSetterContext.Provider, {
+    value: setReferenceNode
+  }, children));
+}
+},{"react":"../node_modules/react/index.js"}],"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/utils.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.useIsomorphicLayoutEffect = exports.unwrapArray = exports.setRef = exports.safeInvoke = exports.fromEntries = void 0;
+
+var React = _interopRequireWildcard(require("react"));
+
+function _getRequireWildcardCache(nodeInterop) { if (typeof WeakMap !== "function") return null; var cacheBabelInterop = new WeakMap(); var cacheNodeInterop = new WeakMap(); return (_getRequireWildcardCache = function (nodeInterop) { return nodeInterop ? cacheNodeInterop : cacheBabelInterop; })(nodeInterop); }
+
+function _interopRequireWildcard(obj, nodeInterop) { if (!nodeInterop && obj && obj.__esModule) { return obj; } if (obj === null || typeof obj !== "object" && typeof obj !== "function") { return { default: obj }; } var cache = _getRequireWildcardCache(nodeInterop); if (cache && cache.has(obj)) { return cache.get(obj); } var newObj = {}; var hasPropertyDescriptor = Object.defineProperty && Object.getOwnPropertyDescriptor; for (var key in obj) { if (key !== "default" && Object.prototype.hasOwnProperty.call(obj, key)) { var desc = hasPropertyDescriptor ? Object.getOwnPropertyDescriptor(obj, key) : null; if (desc && (desc.get || desc.set)) { Object.defineProperty(newObj, key, desc); } else { newObj[key] = obj[key]; } } } newObj.default = obj; if (cache) { cache.set(obj, newObj); } return newObj; }
+
+/**
+ * Takes an argument and if it's an array, returns the first item in the array,
+ * otherwise returns the argument. Used for Preact compatibility.
+ */
+var unwrapArray = function unwrapArray(arg) {
+  return Array.isArray(arg) ? arg[0] : arg;
+};
+/**
+ * Takes a maybe-undefined function and arbitrary args and invokes the function
+ * only if it is defined.
+ */
+
+
+exports.unwrapArray = unwrapArray;
+
+var safeInvoke = function safeInvoke(fn) {
+  if (typeof fn === 'function') {
+    for (var _len = arguments.length, args = new Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
+      args[_key - 1] = arguments[_key];
+    }
+
+    return fn.apply(void 0, args);
+  }
+};
+/**
+ * Sets a ref using either a ref callback or a ref object
+ */
+
+
+exports.safeInvoke = safeInvoke;
+
+var setRef = function setRef(ref, node) {
+  // if its a function call it
+  if (typeof ref === 'function') {
+    return safeInvoke(ref, node);
+  } // otherwise we should treat it as a ref object
+  else if (ref != null) {
+    ref.current = node;
+  }
+};
+/**
+ * Simple ponyfill for Object.fromEntries
+ */
+
+
+exports.setRef = setRef;
+
+var fromEntries = function fromEntries(entries) {
+  return entries.reduce(function (acc, _ref) {
+    var key = _ref[0],
+        value = _ref[1];
+    acc[key] = value;
+    return acc;
+  }, {});
+};
+/**
+ * Small wrapper around `useLayoutEffect` to get rid of the warning on SSR envs
+ */
+
+
+exports.fromEntries = fromEntries;
+var useIsomorphicLayoutEffect = typeof window !== 'undefined' && window.document && window.document.createElement ? React.useLayoutEffect : React.useEffect;
+exports.useIsomorphicLayoutEffect = useIsomorphicLayoutEffect;
+},{"react":"../node_modules/react/index.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.write = exports.viewport = exports.variationPlacements = exports.top = exports.start = exports.right = exports.reference = exports.read = exports.popper = exports.placements = exports.modifierPhases = exports.main = exports.left = exports.end = exports.clippingParents = exports.bottom = exports.beforeWrite = exports.beforeRead = exports.beforeMain = exports.basePlacements = exports.auto = exports.afterWrite = exports.afterRead = exports.afterMain = void 0;
+var top = 'top';
+exports.top = top;
+var bottom = 'bottom';
+exports.bottom = bottom;
+var right = 'right';
+exports.right = right;
+var left = 'left';
+exports.left = left;
+var auto = 'auto';
+exports.auto = auto;
+var basePlacements = [top, bottom, right, left];
+exports.basePlacements = basePlacements;
+var start = 'start';
+exports.start = start;
+var end = 'end';
+exports.end = end;
+var clippingParents = 'clippingParents';
+exports.clippingParents = clippingParents;
+var viewport = 'viewport';
+exports.viewport = viewport;
+var popper = 'popper';
+exports.popper = popper;
+var reference = 'reference';
+exports.reference = reference;
+var variationPlacements = /*#__PURE__*/basePlacements.reduce(function (acc, placement) {
+  return acc.concat([placement + "-" + start, placement + "-" + end]);
+}, []);
+exports.variationPlacements = variationPlacements;
+var placements = /*#__PURE__*/[].concat(basePlacements, [auto]).reduce(function (acc, placement) {
+  return acc.concat([placement, placement + "-" + start, placement + "-" + end]);
+}, []); // modifiers that need to read the DOM
+
+exports.placements = placements;
+var beforeRead = 'beforeRead';
+exports.beforeRead = beforeRead;
+var read = 'read';
+exports.read = read;
+var afterRead = 'afterRead'; // pure-logic modifiers
+
+exports.afterRead = afterRead;
+var beforeMain = 'beforeMain';
+exports.beforeMain = beforeMain;
+var main = 'main';
+exports.main = main;
+var afterMain = 'afterMain'; // modifier with the purpose to write to the DOM (or write into a framework state)
+
+exports.afterMain = afterMain;
+var beforeWrite = 'beforeWrite';
+exports.beforeWrite = beforeWrite;
+var write = 'write';
+exports.write = write;
+var afterWrite = 'afterWrite';
+exports.afterWrite = afterWrite;
+var modifierPhases = [beforeRead, read, afterRead, beforeMain, main, afterMain, beforeWrite, write, afterWrite];
+exports.modifierPhases = modifierPhases;
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getNodeName.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getNodeName;
+
+function getNodeName(element) {
+  return element ? (element.nodeName || '').toLowerCase() : null;
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindow.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getWindow;
+
+/*:: import type { Window } from '../types'; */
+
+/*:: declare function getWindow(node: Node | Window): Window; */
+function getWindow(node) {
+  if (node.toString() !== '[object Window]') {
+    var ownerDocument = node.ownerDocument;
+    return ownerDocument ? ownerDocument.defaultView || window : window;
+  }
+
+  return node;
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/instanceOf.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.isElement = isElement;
+exports.isHTMLElement = isHTMLElement;
+exports.isShadowRoot = isShadowRoot;
+
+var _getWindow = _interopRequireDefault(require("./getWindow.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/*:: declare function isElement(node: mixed): boolean %checks(node instanceof
+  Element); */
+function isElement(node) {
+  var OwnElement = (0, _getWindow.default)(node).Element;
+  return node instanceof OwnElement || node instanceof Element;
+}
+/*:: declare function isHTMLElement(node: mixed): boolean %checks(node instanceof
+  HTMLElement); */
+
+
+function isHTMLElement(node) {
+  var OwnElement = (0, _getWindow.default)(node).HTMLElement;
+  return node instanceof OwnElement || node instanceof HTMLElement;
+}
+/*:: declare function isShadowRoot(node: mixed): boolean %checks(node instanceof
+  ShadowRoot); */
+
+
+function isShadowRoot(node) {
+  var OwnElement = (0, _getWindow.default)(node).ShadowRoot;
+  return node instanceof OwnElement || node instanceof ShadowRoot;
+}
+},{"./getWindow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindow.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/applyStyles.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+
+var _getNodeName = _interopRequireDefault(require("../dom-utils/getNodeName.js"));
+
+var _instanceOf = require("../dom-utils/instanceOf.js");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// This modifier takes the styles prepared by the `computeStyles` modifier
+// and applies them to the HTMLElements such as popper and arrow
+function applyStyles(_ref) {
+  var state = _ref.state;
+  Object.keys(state.elements).forEach(function (name) {
+    var style = state.styles[name] || {};
+    var attributes = state.attributes[name] || {};
+    var element = state.elements[name]; // arrow is optional + virtual elements
+
+    if (!(0, _instanceOf.isHTMLElement)(element) || !(0, _getNodeName.default)(element)) {
+      return;
+    } // Flow doesn't support to extend this property, but it's the most
+    // effective way to apply styles to an HTMLElement
+    // $FlowFixMe[cannot-write]
+
+
+    Object.assign(element.style, style);
+    Object.keys(attributes).forEach(function (name) {
+      var value = attributes[name];
+
+      if (value === false) {
+        element.removeAttribute(name);
+      } else {
+        element.setAttribute(name, value === true ? '' : value);
+      }
+    });
+  });
+}
+
+function effect(_ref2) {
+  var state = _ref2.state;
+  var initialStyles = {
+    popper: {
+      position: state.options.strategy,
+      left: '0',
+      top: '0',
+      margin: '0'
+    },
+    arrow: {
+      position: 'absolute'
+    },
+    reference: {}
+  };
+  Object.assign(state.elements.popper.style, initialStyles.popper);
+
+  if (state.elements.arrow) {
+    Object.assign(state.elements.arrow.style, initialStyles.arrow);
+  }
+
+  return function () {
+    Object.keys(state.elements).forEach(function (name) {
+      var element = state.elements[name];
+      var attributes = state.attributes[name] || {};
+      var styleProperties = Object.keys(state.styles.hasOwnProperty(name) ? state.styles[name] : initialStyles[name]); // Set all values to an empty string to unset them
+
+      var style = styleProperties.reduce(function (style, property) {
+        style[property] = '';
+        return style;
+      }, {}); // arrow is optional + virtual elements
+
+      if (!(0, _instanceOf.isHTMLElement)(element) || !(0, _getNodeName.default)(element)) {
+        return;
+      }
+
+      Object.assign(element.style, style);
+      Object.keys(attributes).forEach(function (attribute) {
+        element.removeAttribute(attribute);
+      });
+    });
+  };
+} // eslint-disable-next-line import/no-unused-modules
+
+
+var _default = {
+  name: 'applyStyles',
+  enabled: true,
+  phase: 'write',
+  fn: applyStyles,
+  effect: effect,
+  requires: ['computeStyles']
+};
+exports.default = _default;
+},{"../dom-utils/getNodeName.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getNodeName.js","../dom-utils/instanceOf.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/instanceOf.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getBasePlacement.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getBasePlacement;
+
+var _enums = require("../enums.js");
+
+function getBasePlacement(placement) {
+  return placement.split('-')[0];
+}
+},{"../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getLayoutRect.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getLayoutRect;
+
+// Returns the layout rect of an element relative to its offsetParent. Layout
+// means it doesn't take into account transforms.
+function getLayoutRect(element) {
+  return {
+    x: element.offsetLeft,
+    y: element.offsetTop,
+    width: element.offsetWidth,
+    height: element.offsetHeight
+  };
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/contains.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = contains;
+
+var _instanceOf = require("./instanceOf.js");
+
+function contains(parent, child) {
+  var rootNode = child.getRootNode && child.getRootNode(); // First, attempt with faster native method
+
+  if (parent.contains(child)) {
+    return true;
+  } // then fallback to custom implementation with Shadow DOM support
+  else if (rootNode && (0, _instanceOf.isShadowRoot)(rootNode)) {
+    var next = child;
+
+    do {
+      if (next && parent.isSameNode(next)) {
+        return true;
+      } // $FlowFixMe[prop-missing]: need a better way to handle this...
+
+
+      next = next.parentNode || next.host;
+    } while (next);
+  } // Give up, the result is false
+
+
+  return false;
+}
+},{"./instanceOf.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/instanceOf.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getComputedStyle.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getComputedStyle;
+
+var _getWindow = _interopRequireDefault(require("./getWindow.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function getComputedStyle(element) {
+  return (0, _getWindow.default)(element).getComputedStyle(element);
+}
+},{"./getWindow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindow.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/isTableElement.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = isTableElement;
+
+var _getNodeName = _interopRequireDefault(require("./getNodeName.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function isTableElement(element) {
+  return ['table', 'td', 'th'].indexOf((0, _getNodeName.default)(element)) >= 0;
+}
+},{"./getNodeName.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getNodeName.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getDocumentElement.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getDocumentElement;
+
+var _instanceOf = require("./instanceOf.js");
+
+function getDocumentElement(element) {
+  // $FlowFixMe[incompatible-return]: assume body is always available
+  return (((0, _instanceOf.isElement)(element) ? element.ownerDocument : // $FlowFixMe[prop-missing]
+  element.document) || window.document).documentElement;
+}
+},{"./instanceOf.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/instanceOf.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getParentNode.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getParentNode;
+
+var _getNodeName = _interopRequireDefault(require("./getNodeName.js"));
+
+var _getDocumentElement = _interopRequireDefault(require("./getDocumentElement.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function getParentNode(element) {
+  if ((0, _getNodeName.default)(element) === 'html') {
+    return element;
+  }
+
+  return (// this is a quicker (but less type safe) way to save quite some bytes from the bundle
+    // $FlowFixMe[incompatible-return]
+    // $FlowFixMe[prop-missing]
+    element.assignedSlot || // step into the shadow DOM of the parent of a slotted node
+    element.parentNode || // DOM Element detected
+    // $FlowFixMe[incompatible-return]: need a better way to handle this...
+    element.host || // ShadowRoot detected
+    // $FlowFixMe[incompatible-call]: HTMLElement is a Node
+    (0, _getDocumentElement.default)(element) // fallback
+
+  );
+}
+},{"./getNodeName.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getNodeName.js","./getDocumentElement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getDocumentElement.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getOffsetParent.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getOffsetParent;
+
+var _getWindow = _interopRequireDefault(require("./getWindow.js"));
+
+var _getNodeName = _interopRequireDefault(require("./getNodeName.js"));
+
+var _getComputedStyle = _interopRequireDefault(require("./getComputedStyle.js"));
+
+var _instanceOf = require("./instanceOf.js");
+
+var _isTableElement = _interopRequireDefault(require("./isTableElement.js"));
+
+var _getParentNode = _interopRequireDefault(require("./getParentNode.js"));
+
+var _getDocumentElement = _interopRequireDefault(require("./getDocumentElement.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function getTrueOffsetParent(element) {
+  if (!(0, _instanceOf.isHTMLElement)(element) || // https://github.com/popperjs/popper-core/issues/837
+  (0, _getComputedStyle.default)(element).position === 'fixed') {
+    return null;
+  }
+
+  var offsetParent = element.offsetParent;
+
+  if (offsetParent) {
+    var html = (0, _getDocumentElement.default)(offsetParent);
+
+    if ((0, _getNodeName.default)(offsetParent) === 'body' && (0, _getComputedStyle.default)(offsetParent).position === 'static' && (0, _getComputedStyle.default)(html).position !== 'static') {
+      return html;
+    }
+  }
+
+  return offsetParent;
+} // `.offsetParent` reports `null` for fixed elements, while absolute elements
+// return the containing block
+
+
+function getContainingBlock(element) {
+  var currentNode = (0, _getParentNode.default)(element);
+
+  while ((0, _instanceOf.isHTMLElement)(currentNode) && ['html', 'body'].indexOf((0, _getNodeName.default)(currentNode)) < 0) {
+    var css = (0, _getComputedStyle.default)(currentNode); // This is non-exhaustive but covers the most common CSS properties that
+    // create a containing block.
+
+    if (css.transform !== 'none' || css.perspective !== 'none' || css.willChange && css.willChange !== 'auto') {
+      return currentNode;
+    } else {
+      currentNode = currentNode.parentNode;
+    }
+  }
+
+  return null;
+} // Gets the closest ancestor positioned element. Handles some edge cases,
+// such as table ancestors and cross browser bugs.
+
+
+function getOffsetParent(element) {
+  var window = (0, _getWindow.default)(element);
+  var offsetParent = getTrueOffsetParent(element);
+
+  while (offsetParent && (0, _isTableElement.default)(offsetParent) && (0, _getComputedStyle.default)(offsetParent).position === 'static') {
+    offsetParent = getTrueOffsetParent(offsetParent);
+  }
+
+  if (offsetParent && (0, _getNodeName.default)(offsetParent) === 'body' && (0, _getComputedStyle.default)(offsetParent).position === 'static') {
+    return window;
+  }
+
+  return offsetParent || getContainingBlock(element) || window;
+}
+},{"./getWindow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindow.js","./getNodeName.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getNodeName.js","./getComputedStyle.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getComputedStyle.js","./instanceOf.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/instanceOf.js","./isTableElement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/isTableElement.js","./getParentNode.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getParentNode.js","./getDocumentElement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getDocumentElement.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getMainAxisFromPlacement.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getMainAxisFromPlacement;
+
+function getMainAxisFromPlacement(placement) {
+  return ['top', 'bottom'].indexOf(placement) >= 0 ? 'x' : 'y';
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/within.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = within;
+
+function within(min, value, max) {
+  return Math.max(min, Math.min(value, max));
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getFreshSideObject.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getFreshSideObject;
+
+function getFreshSideObject() {
+  return {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0
+  };
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/mergePaddingObject.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = mergePaddingObject;
+
+var _getFreshSideObject = _interopRequireDefault(require("./getFreshSideObject.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function mergePaddingObject(paddingObject) {
+  return Object.assign(Object.assign({}, (0, _getFreshSideObject.default)()), paddingObject);
+}
+},{"./getFreshSideObject.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getFreshSideObject.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/expandToHashMap.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = expandToHashMap;
+
+function expandToHashMap(value, keys) {
+  return keys.reduce(function (hashMap, key) {
+    hashMap[key] = value;
+    return hashMap;
+  }, {});
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/arrow.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+
+var _getBasePlacement = _interopRequireDefault(require("../utils/getBasePlacement.js"));
+
+var _getLayoutRect = _interopRequireDefault(require("../dom-utils/getLayoutRect.js"));
+
+var _contains = _interopRequireDefault(require("../dom-utils/contains.js"));
+
+var _getOffsetParent = _interopRequireDefault(require("../dom-utils/getOffsetParent.js"));
+
+var _getMainAxisFromPlacement = _interopRequireDefault(require("../utils/getMainAxisFromPlacement.js"));
+
+var _within = _interopRequireDefault(require("../utils/within.js"));
+
+var _mergePaddingObject = _interopRequireDefault(require("../utils/mergePaddingObject.js"));
+
+var _expandToHashMap = _interopRequireDefault(require("../utils/expandToHashMap.js"));
+
+var _enums = require("../enums.js");
+
+var _instanceOf = require("../dom-utils/instanceOf.js");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// eslint-disable-next-line import/no-unused-modules
+function arrow(_ref) {
+  var _state$modifiersData$;
+
+  var state = _ref.state,
+      name = _ref.name;
+  var arrowElement = state.elements.arrow;
+  var popperOffsets = state.modifiersData.popperOffsets;
+  var basePlacement = (0, _getBasePlacement.default)(state.placement);
+  var axis = (0, _getMainAxisFromPlacement.default)(basePlacement);
+  var isVertical = [_enums.left, _enums.right].indexOf(basePlacement) >= 0;
+  var len = isVertical ? 'height' : 'width';
+
+  if (!arrowElement || !popperOffsets) {
+    return;
+  }
+
+  var paddingObject = state.modifiersData[name + "#persistent"].padding;
+  var arrowRect = (0, _getLayoutRect.default)(arrowElement);
+  var minProp = axis === 'y' ? _enums.top : _enums.left;
+  var maxProp = axis === 'y' ? _enums.bottom : _enums.right;
+  var endDiff = state.rects.reference[len] + state.rects.reference[axis] - popperOffsets[axis] - state.rects.popper[len];
+  var startDiff = popperOffsets[axis] - state.rects.reference[axis];
+  var arrowOffsetParent = (0, _getOffsetParent.default)(arrowElement);
+  var clientSize = arrowOffsetParent ? axis === 'y' ? arrowOffsetParent.clientHeight || 0 : arrowOffsetParent.clientWidth || 0 : 0;
+  var centerToReference = endDiff / 2 - startDiff / 2; // Make sure the arrow doesn't overflow the popper if the center point is
+  // outside of the popper bounds
+
+  var min = paddingObject[minProp];
+  var max = clientSize - arrowRect[len] - paddingObject[maxProp];
+  var center = clientSize / 2 - arrowRect[len] / 2 + centerToReference;
+  var offset = (0, _within.default)(min, center, max); // Prevents breaking syntax highlighting...
+
+  var axisProp = axis;
+  state.modifiersData[name] = (_state$modifiersData$ = {}, _state$modifiersData$[axisProp] = offset, _state$modifiersData$.centerOffset = offset - center, _state$modifiersData$);
+}
+
+function effect(_ref2) {
+  var state = _ref2.state,
+      options = _ref2.options,
+      name = _ref2.name;
+  var _options$element = options.element,
+      arrowElement = _options$element === void 0 ? '[data-popper-arrow]' : _options$element,
+      _options$padding = options.padding,
+      padding = _options$padding === void 0 ? 0 : _options$padding;
+
+  if (arrowElement == null) {
+    return;
+  } // CSS selector
+
+
+  if (typeof arrowElement === 'string') {
+    arrowElement = state.elements.popper.querySelector(arrowElement);
+
+    if (!arrowElement) {
+      return;
+    }
+  }
+
+  if ("development" !== "production") {
+    if (!(0, _instanceOf.isHTMLElement)(arrowElement)) {
+      console.error(['Popper: "arrow" element must be an HTMLElement (not an SVGElement).', 'To use an SVG arrow, wrap it in an HTMLElement that will be used as', 'the arrow.'].join(' '));
+    }
+  }
+
+  if (!(0, _contains.default)(state.elements.popper, arrowElement)) {
+    if ("development" !== "production") {
+      console.error(['Popper: "arrow" modifier\'s `element` must be a child of the popper', 'element.'].join(' '));
+    }
+
+    return;
+  }
+
+  state.elements.arrow = arrowElement;
+  state.modifiersData[name + "#persistent"] = {
+    padding: (0, _mergePaddingObject.default)(typeof padding !== 'number' ? padding : (0, _expandToHashMap.default)(padding, _enums.basePlacements))
+  };
+} // eslint-disable-next-line import/no-unused-modules
+
+
+var _default = {
+  name: 'arrow',
+  enabled: true,
+  phase: 'main',
+  fn: arrow,
+  effect: effect,
+  requires: ['popperOffsets'],
+  requiresIfExists: ['preventOverflow']
+};
+exports.default = _default;
+},{"../utils/getBasePlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getBasePlacement.js","../dom-utils/getLayoutRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getLayoutRect.js","../dom-utils/contains.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/contains.js","../dom-utils/getOffsetParent.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getOffsetParent.js","../utils/getMainAxisFromPlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getMainAxisFromPlacement.js","../utils/within.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/within.js","../utils/mergePaddingObject.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/mergePaddingObject.js","../utils/expandToHashMap.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/expandToHashMap.js","../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js","../dom-utils/instanceOf.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/instanceOf.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/computeStyles.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+exports.mapToStyles = mapToStyles;
+
+var _enums = require("../enums.js");
+
+var _getOffsetParent = _interopRequireDefault(require("../dom-utils/getOffsetParent.js"));
+
+var _getWindow = _interopRequireDefault(require("../dom-utils/getWindow.js"));
+
+var _getDocumentElement = _interopRequireDefault(require("../dom-utils/getDocumentElement.js"));
+
+var _getComputedStyle = _interopRequireDefault(require("../dom-utils/getComputedStyle.js"));
+
+var _getBasePlacement = _interopRequireDefault(require("../utils/getBasePlacement.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// eslint-disable-next-line import/no-unused-modules
+var unsetSides = {
+  top: 'auto',
+  right: 'auto',
+  bottom: 'auto',
+  left: 'auto'
+}; // Round the offsets to the nearest suitable subpixel based on the DPR.
+// Zooming can change the DPR, but it seems to report a value that will
+// cleanly divide the values into the appropriate subpixels.
+
+function roundOffsetsByDPR(_ref) {
+  var x = _ref.x,
+      y = _ref.y;
+  var win = window;
+  var dpr = win.devicePixelRatio || 1;
+  return {
+    x: Math.round(x * dpr) / dpr || 0,
+    y: Math.round(y * dpr) / dpr || 0
+  };
+}
+
+function mapToStyles(_ref2) {
+  var _Object$assign2;
+
+  var popper = _ref2.popper,
+      popperRect = _ref2.popperRect,
+      placement = _ref2.placement,
+      offsets = _ref2.offsets,
+      position = _ref2.position,
+      gpuAcceleration = _ref2.gpuAcceleration,
+      adaptive = _ref2.adaptive,
+      roundOffsets = _ref2.roundOffsets;
+
+  var _ref3 = roundOffsets ? roundOffsetsByDPR(offsets) : offsets,
+      _ref3$x = _ref3.x,
+      x = _ref3$x === void 0 ? 0 : _ref3$x,
+      _ref3$y = _ref3.y,
+      y = _ref3$y === void 0 ? 0 : _ref3$y;
+
+  var hasX = offsets.hasOwnProperty('x');
+  var hasY = offsets.hasOwnProperty('y');
+  var sideX = _enums.left;
+  var sideY = _enums.top;
+  var win = window;
+
+  if (adaptive) {
+    var offsetParent = (0, _getOffsetParent.default)(popper);
+
+    if (offsetParent === (0, _getWindow.default)(popper)) {
+      offsetParent = (0, _getDocumentElement.default)(popper);
+    } // $FlowFixMe[incompatible-cast]: force type refinement, we compare offsetParent with window above, but Flow doesn't detect it
+
+    /*:: offsetParent = (offsetParent: Element); */
+
+
+    if (placement === _enums.top) {
+      sideY = _enums.bottom;
+      y -= offsetParent.clientHeight - popperRect.height;
+      y *= gpuAcceleration ? 1 : -1;
+    }
+
+    if (placement === _enums.left) {
+      sideX = _enums.right;
+      x -= offsetParent.clientWidth - popperRect.width;
+      x *= gpuAcceleration ? 1 : -1;
+    }
+  }
+
+  var commonStyles = Object.assign({
+    position: position
+  }, adaptive && unsetSides);
+
+  if (gpuAcceleration) {
+    var _Object$assign;
+
+    return Object.assign(Object.assign({}, commonStyles), {}, (_Object$assign = {}, _Object$assign[sideY] = hasY ? '0' : '', _Object$assign[sideX] = hasX ? '0' : '', _Object$assign.transform = (win.devicePixelRatio || 1) < 2 ? "translate(" + x + "px, " + y + "px)" : "translate3d(" + x + "px, " + y + "px, 0)", _Object$assign));
+  }
+
+  return Object.assign(Object.assign({}, commonStyles), {}, (_Object$assign2 = {}, _Object$assign2[sideY] = hasY ? y + "px" : '', _Object$assign2[sideX] = hasX ? x + "px" : '', _Object$assign2.transform = '', _Object$assign2));
+}
+
+function computeStyles(_ref4) {
+  var state = _ref4.state,
+      options = _ref4.options;
+  var _options$gpuAccelerat = options.gpuAcceleration,
+      gpuAcceleration = _options$gpuAccelerat === void 0 ? true : _options$gpuAccelerat,
+      _options$adaptive = options.adaptive,
+      adaptive = _options$adaptive === void 0 ? true : _options$adaptive,
+      _options$roundOffsets = options.roundOffsets,
+      roundOffsets = _options$roundOffsets === void 0 ? true : _options$roundOffsets;
+
+  if ("development" !== "production") {
+    var transitionProperty = (0, _getComputedStyle.default)(state.elements.popper).transitionProperty || '';
+
+    if (adaptive && ['transform', 'top', 'right', 'bottom', 'left'].some(function (property) {
+      return transitionProperty.indexOf(property) >= 0;
+    })) {
+      console.warn(['Popper: Detected CSS transitions on at least one of the following', 'CSS properties: "transform", "top", "right", "bottom", "left".', '\n\n', 'Disable the "computeStyles" modifier\'s `adaptive` option to allow', 'for smooth transitions, or remove these properties from the CSS', 'transition declaration on the popper element if only transitioning', 'opacity or background-color for example.', '\n\n', 'We recommend using the popper element as a wrapper around an inner', 'element that can have any CSS property transitioned for animations.'].join(' '));
+    }
+  }
+
+  var commonStyles = {
+    placement: (0, _getBasePlacement.default)(state.placement),
+    popper: state.elements.popper,
+    popperRect: state.rects.popper,
+    gpuAcceleration: gpuAcceleration
+  };
+
+  if (state.modifiersData.popperOffsets != null) {
+    state.styles.popper = Object.assign(Object.assign({}, state.styles.popper), mapToStyles(Object.assign(Object.assign({}, commonStyles), {}, {
+      offsets: state.modifiersData.popperOffsets,
+      position: state.options.strategy,
+      adaptive: adaptive,
+      roundOffsets: roundOffsets
+    })));
+  }
+
+  if (state.modifiersData.arrow != null) {
+    state.styles.arrow = Object.assign(Object.assign({}, state.styles.arrow), mapToStyles(Object.assign(Object.assign({}, commonStyles), {}, {
+      offsets: state.modifiersData.arrow,
+      position: 'absolute',
+      adaptive: false,
+      roundOffsets: roundOffsets
+    })));
+  }
+
+  state.attributes.popper = Object.assign(Object.assign({}, state.attributes.popper), {}, {
+    'data-popper-placement': state.placement
+  });
+} // eslint-disable-next-line import/no-unused-modules
+
+
+var _default = {
+  name: 'computeStyles',
+  enabled: true,
+  phase: 'beforeWrite',
+  fn: computeStyles,
+  data: {}
+};
+exports.default = _default;
+},{"../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js","../dom-utils/getOffsetParent.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getOffsetParent.js","../dom-utils/getWindow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindow.js","../dom-utils/getDocumentElement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getDocumentElement.js","../dom-utils/getComputedStyle.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getComputedStyle.js","../utils/getBasePlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getBasePlacement.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/eventListeners.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+
+var _getWindow = _interopRequireDefault(require("../dom-utils/getWindow.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// eslint-disable-next-line import/no-unused-modules
+var passive = {
+  passive: true
+};
+
+function effect(_ref) {
+  var state = _ref.state,
+      instance = _ref.instance,
+      options = _ref.options;
+  var _options$scroll = options.scroll,
+      scroll = _options$scroll === void 0 ? true : _options$scroll,
+      _options$resize = options.resize,
+      resize = _options$resize === void 0 ? true : _options$resize;
+  var window = (0, _getWindow.default)(state.elements.popper);
+  var scrollParents = [].concat(state.scrollParents.reference, state.scrollParents.popper);
+
+  if (scroll) {
+    scrollParents.forEach(function (scrollParent) {
+      scrollParent.addEventListener('scroll', instance.update, passive);
+    });
+  }
+
+  if (resize) {
+    window.addEventListener('resize', instance.update, passive);
+  }
+
+  return function () {
+    if (scroll) {
+      scrollParents.forEach(function (scrollParent) {
+        scrollParent.removeEventListener('scroll', instance.update, passive);
+      });
+    }
+
+    if (resize) {
+      window.removeEventListener('resize', instance.update, passive);
+    }
+  };
+} // eslint-disable-next-line import/no-unused-modules
+
+
+var _default = {
+  name: 'eventListeners',
+  enabled: true,
+  phase: 'write',
+  fn: function fn() {},
+  effect: effect,
+  data: {}
+};
+exports.default = _default;
+},{"../dom-utils/getWindow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindow.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getOppositePlacement.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getOppositePlacement;
+var hash = {
+  left: 'right',
+  right: 'left',
+  bottom: 'top',
+  top: 'bottom'
+};
+
+function getOppositePlacement(placement) {
+  return placement.replace(/left|right|bottom|top/g, function (matched) {
+    return hash[matched];
+  });
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getOppositeVariationPlacement.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getOppositeVariationPlacement;
+var hash = {
+  start: 'end',
+  end: 'start'
+};
+
+function getOppositeVariationPlacement(placement) {
+  return placement.replace(/start|end/g, function (matched) {
+    return hash[matched];
+  });
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getBoundingClientRect.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getBoundingClientRect;
+
+function getBoundingClientRect(element) {
+  var rect = element.getBoundingClientRect();
+  return {
+    width: rect.width,
+    height: rect.height,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    left: rect.left,
+    x: rect.left,
+    y: rect.top
+  };
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindowScroll.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getWindowScroll;
+
+var _getWindow = _interopRequireDefault(require("./getWindow.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function getWindowScroll(node) {
+  var win = (0, _getWindow.default)(node);
+  var scrollLeft = win.pageXOffset;
+  var scrollTop = win.pageYOffset;
+  return {
+    scrollLeft: scrollLeft,
+    scrollTop: scrollTop
+  };
+}
+},{"./getWindow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindow.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindowScrollBarX.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getWindowScrollBarX;
+
+var _getBoundingClientRect = _interopRequireDefault(require("./getBoundingClientRect.js"));
+
+var _getDocumentElement = _interopRequireDefault(require("./getDocumentElement.js"));
+
+var _getWindowScroll = _interopRequireDefault(require("./getWindowScroll.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function getWindowScrollBarX(element) {
+  // If <html> has a CSS width greater than the viewport, then this will be
+  // incorrect for RTL.
+  // Popper 1 is broken in this case and never had a bug report so let's assume
+  // it's not an issue. I don't think anyone ever specifies width on <html>
+  // anyway.
+  // Browsers where the left scrollbar doesn't cause an issue report `0` for
+  // this (e.g. Edge 2019, IE11, Safari)
+  return (0, _getBoundingClientRect.default)((0, _getDocumentElement.default)(element)).left + (0, _getWindowScroll.default)(element).scrollLeft;
+}
+},{"./getBoundingClientRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getBoundingClientRect.js","./getDocumentElement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getDocumentElement.js","./getWindowScroll.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindowScroll.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getViewportRect.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getViewportRect;
+
+var _getWindow = _interopRequireDefault(require("./getWindow.js"));
+
+var _getDocumentElement = _interopRequireDefault(require("./getDocumentElement.js"));
+
+var _getWindowScrollBarX = _interopRequireDefault(require("./getWindowScrollBarX.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function getViewportRect(element) {
+  var win = (0, _getWindow.default)(element);
+  var html = (0, _getDocumentElement.default)(element);
+  var visualViewport = win.visualViewport;
+  var width = html.clientWidth;
+  var height = html.clientHeight;
+  var x = 0;
+  var y = 0; // NB: This isn't supported on iOS <= 12. If the keyboard is open, the popper
+  // can be obscured underneath it.
+  // Also, `html.clientHeight` adds the bottom bar height in Safari iOS, even
+  // if it isn't open, so if this isn't available, the popper will be detected
+  // to overflow the bottom of the screen too early.
+
+  if (visualViewport) {
+    width = visualViewport.width;
+    height = visualViewport.height; // Uses Layout Viewport (like Chrome; Safari does not currently)
+    // In Chrome, it returns a value very close to 0 (+/-) but contains rounding
+    // errors due to floating point numbers, so we need to check precision.
+    // Safari returns a number <= 0, usually < -1 when pinch-zoomed
+    // Feature detection fails in mobile emulation mode in Chrome.
+    // Math.abs(win.innerWidth / visualViewport.scale - visualViewport.width) <
+    // 0.001
+    // Fallback here: "Not Safari" userAgent
+
+    if (!/^((?!chrome|android).)*safari/i.test(navigator.userAgent)) {
+      x = visualViewport.offsetLeft;
+      y = visualViewport.offsetTop;
+    }
+  }
+
+  return {
+    width: width,
+    height: height,
+    x: x + (0, _getWindowScrollBarX.default)(element),
+    y: y
+  };
+}
+},{"./getWindow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindow.js","./getDocumentElement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getDocumentElement.js","./getWindowScrollBarX.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindowScrollBarX.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getDocumentRect.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getDocumentRect;
+
+var _getDocumentElement = _interopRequireDefault(require("./getDocumentElement.js"));
+
+var _getComputedStyle = _interopRequireDefault(require("./getComputedStyle.js"));
+
+var _getWindowScrollBarX = _interopRequireDefault(require("./getWindowScrollBarX.js"));
+
+var _getWindowScroll = _interopRequireDefault(require("./getWindowScroll.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// Gets the entire size of the scrollable document area, even extending outside
+// of the `<html>` and `<body>` rect bounds if horizontally scrollable
+function getDocumentRect(element) {
+  var html = (0, _getDocumentElement.default)(element);
+  var winScroll = (0, _getWindowScroll.default)(element);
+  var body = element.ownerDocument.body;
+  var width = Math.max(html.scrollWidth, html.clientWidth, body ? body.scrollWidth : 0, body ? body.clientWidth : 0);
+  var height = Math.max(html.scrollHeight, html.clientHeight, body ? body.scrollHeight : 0, body ? body.clientHeight : 0);
+  var x = -winScroll.scrollLeft + (0, _getWindowScrollBarX.default)(element);
+  var y = -winScroll.scrollTop;
+
+  if ((0, _getComputedStyle.default)(body || html).direction === 'rtl') {
+    x += Math.max(html.clientWidth, body ? body.clientWidth : 0) - width;
+  }
+
+  return {
+    width: width,
+    height: height,
+    x: x,
+    y: y
+  };
+}
+},{"./getDocumentElement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getDocumentElement.js","./getComputedStyle.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getComputedStyle.js","./getWindowScrollBarX.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindowScrollBarX.js","./getWindowScroll.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindowScroll.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/isScrollParent.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = isScrollParent;
+
+var _getComputedStyle2 = _interopRequireDefault(require("./getComputedStyle.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function isScrollParent(element) {
+  // Firefox wants us to check `-x` and `-y` variations as well
+  var _getComputedStyle = (0, _getComputedStyle2.default)(element),
+      overflow = _getComputedStyle.overflow,
+      overflowX = _getComputedStyle.overflowX,
+      overflowY = _getComputedStyle.overflowY;
+
+  return /auto|scroll|overlay|hidden/.test(overflow + overflowY + overflowX);
+}
+},{"./getComputedStyle.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getComputedStyle.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getScrollParent.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getScrollParent;
+
+var _getParentNode = _interopRequireDefault(require("./getParentNode.js"));
+
+var _isScrollParent = _interopRequireDefault(require("./isScrollParent.js"));
+
+var _getNodeName = _interopRequireDefault(require("./getNodeName.js"));
+
+var _instanceOf = require("./instanceOf.js");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function getScrollParent(node) {
+  if (['html', 'body', '#document'].indexOf((0, _getNodeName.default)(node)) >= 0) {
+    // $FlowFixMe[incompatible-return]: assume body is always available
+    return node.ownerDocument.body;
+  }
+
+  if ((0, _instanceOf.isHTMLElement)(node) && (0, _isScrollParent.default)(node)) {
+    return node;
+  }
+
+  return getScrollParent((0, _getParentNode.default)(node));
+}
+},{"./getParentNode.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getParentNode.js","./isScrollParent.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/isScrollParent.js","./getNodeName.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getNodeName.js","./instanceOf.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/instanceOf.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/listScrollParents.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = listScrollParents;
+
+var _getScrollParent = _interopRequireDefault(require("./getScrollParent.js"));
+
+var _getParentNode = _interopRequireDefault(require("./getParentNode.js"));
+
+var _getNodeName = _interopRequireDefault(require("./getNodeName.js"));
+
+var _getWindow = _interopRequireDefault(require("./getWindow.js"));
+
+var _isScrollParent = _interopRequireDefault(require("./isScrollParent.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/*
+given a DOM element, return the list of all scroll parents, up the list of ancesors
+until we get to the top window object. This list is what we attach scroll listeners
+to, because if any of these parent elements scroll, we'll need to re-calculate the
+reference element's position.
+*/
+function listScrollParents(element, list) {
+  if (list === void 0) {
+    list = [];
+  }
+
+  var scrollParent = (0, _getScrollParent.default)(element);
+  var isBody = (0, _getNodeName.default)(scrollParent) === 'body';
+  var win = (0, _getWindow.default)(scrollParent);
+  var target = isBody ? [win].concat(win.visualViewport || [], (0, _isScrollParent.default)(scrollParent) ? scrollParent : []) : scrollParent;
+  var updatedList = list.concat(target);
+  return isBody ? updatedList : // $FlowFixMe[incompatible-call]: isBody tells us target will be an HTMLElement here
+  updatedList.concat(listScrollParents((0, _getParentNode.default)(target)));
+}
+},{"./getScrollParent.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getScrollParent.js","./getParentNode.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getParentNode.js","./getNodeName.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getNodeName.js","./getWindow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindow.js","./isScrollParent.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/isScrollParent.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/rectToClientRect.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = rectToClientRect;
+
+function rectToClientRect(rect) {
+  return Object.assign(Object.assign({}, rect), {}, {
+    left: rect.x,
+    top: rect.y,
+    right: rect.x + rect.width,
+    bottom: rect.y + rect.height
+  });
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getClippingRect.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getClippingRect;
+
+var _enums = require("../enums.js");
+
+var _getViewportRect = _interopRequireDefault(require("./getViewportRect.js"));
+
+var _getDocumentRect = _interopRequireDefault(require("./getDocumentRect.js"));
+
+var _listScrollParents = _interopRequireDefault(require("./listScrollParents.js"));
+
+var _getOffsetParent = _interopRequireDefault(require("./getOffsetParent.js"));
+
+var _getDocumentElement = _interopRequireDefault(require("./getDocumentElement.js"));
+
+var _getComputedStyle = _interopRequireDefault(require("./getComputedStyle.js"));
+
+var _instanceOf = require("./instanceOf.js");
+
+var _getBoundingClientRect = _interopRequireDefault(require("./getBoundingClientRect.js"));
+
+var _getParentNode = _interopRequireDefault(require("./getParentNode.js"));
+
+var _contains = _interopRequireDefault(require("./contains.js"));
+
+var _getNodeName = _interopRequireDefault(require("./getNodeName.js"));
+
+var _rectToClientRect = _interopRequireDefault(require("../utils/rectToClientRect.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function getInnerBoundingClientRect(element) {
+  var rect = (0, _getBoundingClientRect.default)(element);
+  rect.top = rect.top + element.clientTop;
+  rect.left = rect.left + element.clientLeft;
+  rect.bottom = rect.top + element.clientHeight;
+  rect.right = rect.left + element.clientWidth;
+  rect.width = element.clientWidth;
+  rect.height = element.clientHeight;
+  rect.x = rect.left;
+  rect.y = rect.top;
+  return rect;
+}
+
+function getClientRectFromMixedType(element, clippingParent) {
+  return clippingParent === _enums.viewport ? (0, _rectToClientRect.default)((0, _getViewportRect.default)(element)) : (0, _instanceOf.isHTMLElement)(clippingParent) ? getInnerBoundingClientRect(clippingParent) : (0, _rectToClientRect.default)((0, _getDocumentRect.default)((0, _getDocumentElement.default)(element)));
+} // A "clipping parent" is an overflowable container with the characteristic of
+// clipping (or hiding) overflowing elements with a position different from
+// `initial`
+
+
+function getClippingParents(element) {
+  var clippingParents = (0, _listScrollParents.default)((0, _getParentNode.default)(element));
+  var canEscapeClipping = ['absolute', 'fixed'].indexOf((0, _getComputedStyle.default)(element).position) >= 0;
+  var clipperElement = canEscapeClipping && (0, _instanceOf.isHTMLElement)(element) ? (0, _getOffsetParent.default)(element) : element;
+
+  if (!(0, _instanceOf.isElement)(clipperElement)) {
+    return [];
+  } // $FlowFixMe[incompatible-return]: https://github.com/facebook/flow/issues/1414
+
+
+  return clippingParents.filter(function (clippingParent) {
+    return (0, _instanceOf.isElement)(clippingParent) && (0, _contains.default)(clippingParent, clipperElement) && (0, _getNodeName.default)(clippingParent) !== 'body';
+  });
+} // Gets the maximum area that the element is visible in due to any number of
+// clipping parents
+
+
+function getClippingRect(element, boundary, rootBoundary) {
+  var mainClippingParents = boundary === 'clippingParents' ? getClippingParents(element) : [].concat(boundary);
+  var clippingParents = [].concat(mainClippingParents, [rootBoundary]);
+  var firstClippingParent = clippingParents[0];
+  var clippingRect = clippingParents.reduce(function (accRect, clippingParent) {
+    var rect = getClientRectFromMixedType(element, clippingParent);
+    accRect.top = Math.max(rect.top, accRect.top);
+    accRect.right = Math.min(rect.right, accRect.right);
+    accRect.bottom = Math.min(rect.bottom, accRect.bottom);
+    accRect.left = Math.max(rect.left, accRect.left);
+    return accRect;
+  }, getClientRectFromMixedType(element, firstClippingParent));
+  clippingRect.width = clippingRect.right - clippingRect.left;
+  clippingRect.height = clippingRect.bottom - clippingRect.top;
+  clippingRect.x = clippingRect.left;
+  clippingRect.y = clippingRect.top;
+  return clippingRect;
+}
+},{"../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js","./getViewportRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getViewportRect.js","./getDocumentRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getDocumentRect.js","./listScrollParents.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/listScrollParents.js","./getOffsetParent.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getOffsetParent.js","./getDocumentElement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getDocumentElement.js","./getComputedStyle.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getComputedStyle.js","./instanceOf.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/instanceOf.js","./getBoundingClientRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getBoundingClientRect.js","./getParentNode.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getParentNode.js","./contains.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/contains.js","./getNodeName.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getNodeName.js","../utils/rectToClientRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/rectToClientRect.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getVariation.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getVariation;
+
+function getVariation(placement) {
+  return placement.split('-')[1];
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/computeOffsets.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = computeOffsets;
+
+var _getBasePlacement = _interopRequireDefault(require("./getBasePlacement.js"));
+
+var _getVariation = _interopRequireDefault(require("./getVariation.js"));
+
+var _getMainAxisFromPlacement = _interopRequireDefault(require("./getMainAxisFromPlacement.js"));
+
+var _enums = require("../enums.js");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function computeOffsets(_ref) {
+  var reference = _ref.reference,
+      element = _ref.element,
+      placement = _ref.placement;
+  var basePlacement = placement ? (0, _getBasePlacement.default)(placement) : null;
+  var variation = placement ? (0, _getVariation.default)(placement) : null;
+  var commonX = reference.x + reference.width / 2 - element.width / 2;
+  var commonY = reference.y + reference.height / 2 - element.height / 2;
+  var offsets;
+
+  switch (basePlacement) {
+    case _enums.top:
+      offsets = {
+        x: commonX,
+        y: reference.y - element.height
+      };
+      break;
+
+    case _enums.bottom:
+      offsets = {
+        x: commonX,
+        y: reference.y + reference.height
+      };
+      break;
+
+    case _enums.right:
+      offsets = {
+        x: reference.x + reference.width,
+        y: commonY
+      };
+      break;
+
+    case _enums.left:
+      offsets = {
+        x: reference.x - element.width,
+        y: commonY
+      };
+      break;
+
+    default:
+      offsets = {
+        x: reference.x,
+        y: reference.y
+      };
+  }
+
+  var mainAxis = basePlacement ? (0, _getMainAxisFromPlacement.default)(basePlacement) : null;
+
+  if (mainAxis != null) {
+    var len = mainAxis === 'y' ? 'height' : 'width';
+
+    switch (variation) {
+      case _enums.start:
+        offsets[mainAxis] = offsets[mainAxis] - (reference[len] / 2 - element[len] / 2);
+        break;
+
+      case _enums.end:
+        offsets[mainAxis] = offsets[mainAxis] + (reference[len] / 2 - element[len] / 2);
+        break;
+
+      default:
+    }
+  }
+
+  return offsets;
+}
+},{"./getBasePlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getBasePlacement.js","./getVariation.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getVariation.js","./getMainAxisFromPlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getMainAxisFromPlacement.js","../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/detectOverflow.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = detectOverflow;
+
+var _getBoundingClientRect = _interopRequireDefault(require("../dom-utils/getBoundingClientRect.js"));
+
+var _getClippingRect = _interopRequireDefault(require("../dom-utils/getClippingRect.js"));
+
+var _getDocumentElement = _interopRequireDefault(require("../dom-utils/getDocumentElement.js"));
+
+var _computeOffsets = _interopRequireDefault(require("./computeOffsets.js"));
+
+var _rectToClientRect = _interopRequireDefault(require("./rectToClientRect.js"));
+
+var _enums = require("../enums.js");
+
+var _instanceOf = require("../dom-utils/instanceOf.js");
+
+var _mergePaddingObject = _interopRequireDefault(require("./mergePaddingObject.js"));
+
+var _expandToHashMap = _interopRequireDefault(require("./expandToHashMap.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// eslint-disable-next-line import/no-unused-modules
+function detectOverflow(state, options) {
+  if (options === void 0) {
+    options = {};
+  }
+
+  var _options = options,
+      _options$placement = _options.placement,
+      placement = _options$placement === void 0 ? state.placement : _options$placement,
+      _options$boundary = _options.boundary,
+      boundary = _options$boundary === void 0 ? _enums.clippingParents : _options$boundary,
+      _options$rootBoundary = _options.rootBoundary,
+      rootBoundary = _options$rootBoundary === void 0 ? _enums.viewport : _options$rootBoundary,
+      _options$elementConte = _options.elementContext,
+      elementContext = _options$elementConte === void 0 ? _enums.popper : _options$elementConte,
+      _options$altBoundary = _options.altBoundary,
+      altBoundary = _options$altBoundary === void 0 ? false : _options$altBoundary,
+      _options$padding = _options.padding,
+      padding = _options$padding === void 0 ? 0 : _options$padding;
+  var paddingObject = (0, _mergePaddingObject.default)(typeof padding !== 'number' ? padding : (0, _expandToHashMap.default)(padding, _enums.basePlacements));
+  var altContext = elementContext === _enums.popper ? _enums.reference : _enums.popper;
+  var referenceElement = state.elements.reference;
+  var popperRect = state.rects.popper;
+  var element = state.elements[altBoundary ? altContext : elementContext];
+  var clippingClientRect = (0, _getClippingRect.default)((0, _instanceOf.isElement)(element) ? element : element.contextElement || (0, _getDocumentElement.default)(state.elements.popper), boundary, rootBoundary);
+  var referenceClientRect = (0, _getBoundingClientRect.default)(referenceElement);
+  var popperOffsets = (0, _computeOffsets.default)({
+    reference: referenceClientRect,
+    element: popperRect,
+    strategy: 'absolute',
+    placement: placement
+  });
+  var popperClientRect = (0, _rectToClientRect.default)(Object.assign(Object.assign({}, popperRect), popperOffsets));
+  var elementClientRect = elementContext === _enums.popper ? popperClientRect : referenceClientRect; // positive = overflowing the clipping rect
+  // 0 or negative = within the clipping rect
+
+  var overflowOffsets = {
+    top: clippingClientRect.top - elementClientRect.top + paddingObject.top,
+    bottom: elementClientRect.bottom - clippingClientRect.bottom + paddingObject.bottom,
+    left: clippingClientRect.left - elementClientRect.left + paddingObject.left,
+    right: elementClientRect.right - clippingClientRect.right + paddingObject.right
+  };
+  var offsetData = state.modifiersData.offset; // Offsets can be applied only to the popper element
+
+  if (elementContext === _enums.popper && offsetData) {
+    var offset = offsetData[placement];
+    Object.keys(overflowOffsets).forEach(function (key) {
+      var multiply = [_enums.right, _enums.bottom].indexOf(key) >= 0 ? 1 : -1;
+      var axis = [_enums.top, _enums.bottom].indexOf(key) >= 0 ? 'y' : 'x';
+      overflowOffsets[key] += offset[axis] * multiply;
+    });
+  }
+
+  return overflowOffsets;
+}
+},{"../dom-utils/getBoundingClientRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getBoundingClientRect.js","../dom-utils/getClippingRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getClippingRect.js","../dom-utils/getDocumentElement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getDocumentElement.js","./computeOffsets.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/computeOffsets.js","./rectToClientRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/rectToClientRect.js","../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js","../dom-utils/instanceOf.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/instanceOf.js","./mergePaddingObject.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/mergePaddingObject.js","./expandToHashMap.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/expandToHashMap.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/computeAutoPlacement.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = computeAutoPlacement;
+
+var _getVariation = _interopRequireDefault(require("./getVariation.js"));
+
+var _enums = require("../enums.js");
+
+var _detectOverflow = _interopRequireDefault(require("./detectOverflow.js"));
+
+var _getBasePlacement = _interopRequireDefault(require("./getBasePlacement.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/*:: type OverflowsMap = { [ComputedPlacement]: number }; */
+
+/*;; type OverflowsMap = { [key in ComputedPlacement]: number }; */
+function computeAutoPlacement(state, options) {
+  if (options === void 0) {
+    options = {};
+  }
+
+  var _options = options,
+      placement = _options.placement,
+      boundary = _options.boundary,
+      rootBoundary = _options.rootBoundary,
+      padding = _options.padding,
+      flipVariations = _options.flipVariations,
+      _options$allowedAutoP = _options.allowedAutoPlacements,
+      allowedAutoPlacements = _options$allowedAutoP === void 0 ? _enums.placements : _options$allowedAutoP;
+  var variation = (0, _getVariation.default)(placement);
+  var placements = variation ? flipVariations ? _enums.variationPlacements : _enums.variationPlacements.filter(function (placement) {
+    return (0, _getVariation.default)(placement) === variation;
+  }) : _enums.basePlacements;
+  var allowedPlacements = placements.filter(function (placement) {
+    return allowedAutoPlacements.indexOf(placement) >= 0;
+  });
+
+  if (allowedPlacements.length === 0) {
+    allowedPlacements = placements;
+
+    if ("development" !== "production") {
+      console.error(['Popper: The `allowedAutoPlacements` option did not allow any', 'placements. Ensure the `placement` option matches the variation', 'of the allowed placements.', 'For example, "auto" cannot be used to allow "bottom-start".', 'Use "auto-start" instead.'].join(' '));
+    }
+  } // $FlowFixMe[incompatible-type]: Flow seems to have problems with two array unions...
+
+
+  var overflows = allowedPlacements.reduce(function (acc, placement) {
+    acc[placement] = (0, _detectOverflow.default)(state, {
+      placement: placement,
+      boundary: boundary,
+      rootBoundary: rootBoundary,
+      padding: padding
+    })[(0, _getBasePlacement.default)(placement)];
+    return acc;
+  }, {});
+  return Object.keys(overflows).sort(function (a, b) {
+    return overflows[a] - overflows[b];
+  });
+}
+},{"./getVariation.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getVariation.js","../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js","./detectOverflow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/detectOverflow.js","./getBasePlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getBasePlacement.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/flip.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+
+var _getOppositePlacement = _interopRequireDefault(require("../utils/getOppositePlacement.js"));
+
+var _getBasePlacement = _interopRequireDefault(require("../utils/getBasePlacement.js"));
+
+var _getOppositeVariationPlacement = _interopRequireDefault(require("../utils/getOppositeVariationPlacement.js"));
+
+var _detectOverflow = _interopRequireDefault(require("../utils/detectOverflow.js"));
+
+var _computeAutoPlacement = _interopRequireDefault(require("../utils/computeAutoPlacement.js"));
+
+var _enums = require("../enums.js");
+
+var _getVariation = _interopRequireDefault(require("../utils/getVariation.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// eslint-disable-next-line import/no-unused-modules
+function getExpandedFallbackPlacements(placement) {
+  if ((0, _getBasePlacement.default)(placement) === _enums.auto) {
+    return [];
+  }
+
+  var oppositePlacement = (0, _getOppositePlacement.default)(placement);
+  return [(0, _getOppositeVariationPlacement.default)(placement), oppositePlacement, (0, _getOppositeVariationPlacement.default)(oppositePlacement)];
+}
+
+function flip(_ref) {
+  var state = _ref.state,
+      options = _ref.options,
+      name = _ref.name;
+
+  if (state.modifiersData[name]._skip) {
+    return;
+  }
+
+  var _options$mainAxis = options.mainAxis,
+      checkMainAxis = _options$mainAxis === void 0 ? true : _options$mainAxis,
+      _options$altAxis = options.altAxis,
+      checkAltAxis = _options$altAxis === void 0 ? true : _options$altAxis,
+      specifiedFallbackPlacements = options.fallbackPlacements,
+      padding = options.padding,
+      boundary = options.boundary,
+      rootBoundary = options.rootBoundary,
+      altBoundary = options.altBoundary,
+      _options$flipVariatio = options.flipVariations,
+      flipVariations = _options$flipVariatio === void 0 ? true : _options$flipVariatio,
+      allowedAutoPlacements = options.allowedAutoPlacements;
+  var preferredPlacement = state.options.placement;
+  var basePlacement = (0, _getBasePlacement.default)(preferredPlacement);
+  var isBasePlacement = basePlacement === preferredPlacement;
+  var fallbackPlacements = specifiedFallbackPlacements || (isBasePlacement || !flipVariations ? [(0, _getOppositePlacement.default)(preferredPlacement)] : getExpandedFallbackPlacements(preferredPlacement));
+  var placements = [preferredPlacement].concat(fallbackPlacements).reduce(function (acc, placement) {
+    return acc.concat((0, _getBasePlacement.default)(placement) === _enums.auto ? (0, _computeAutoPlacement.default)(state, {
+      placement: placement,
+      boundary: boundary,
+      rootBoundary: rootBoundary,
+      padding: padding,
+      flipVariations: flipVariations,
+      allowedAutoPlacements: allowedAutoPlacements
+    }) : placement);
+  }, []);
+  var referenceRect = state.rects.reference;
+  var popperRect = state.rects.popper;
+  var checksMap = new Map();
+  var makeFallbackChecks = true;
+  var firstFittingPlacement = placements[0];
+
+  for (var i = 0; i < placements.length; i++) {
+    var placement = placements[i];
+
+    var _basePlacement = (0, _getBasePlacement.default)(placement);
+
+    var isStartVariation = (0, _getVariation.default)(placement) === _enums.start;
+
+    var isVertical = [_enums.top, _enums.bottom].indexOf(_basePlacement) >= 0;
+    var len = isVertical ? 'width' : 'height';
+    var overflow = (0, _detectOverflow.default)(state, {
+      placement: placement,
+      boundary: boundary,
+      rootBoundary: rootBoundary,
+      altBoundary: altBoundary,
+      padding: padding
+    });
+    var mainVariationSide = isVertical ? isStartVariation ? _enums.right : _enums.left : isStartVariation ? _enums.bottom : _enums.top;
+
+    if (referenceRect[len] > popperRect[len]) {
+      mainVariationSide = (0, _getOppositePlacement.default)(mainVariationSide);
+    }
+
+    var altVariationSide = (0, _getOppositePlacement.default)(mainVariationSide);
+    var checks = [];
+
+    if (checkMainAxis) {
+      checks.push(overflow[_basePlacement] <= 0);
+    }
+
+    if (checkAltAxis) {
+      checks.push(overflow[mainVariationSide] <= 0, overflow[altVariationSide] <= 0);
+    }
+
+    if (checks.every(function (check) {
+      return check;
+    })) {
+      firstFittingPlacement = placement;
+      makeFallbackChecks = false;
+      break;
+    }
+
+    checksMap.set(placement, checks);
+  }
+
+  if (makeFallbackChecks) {
+    // `2` may be desired in some cases – research later
+    var numberOfChecks = flipVariations ? 3 : 1;
+
+    var _loop = function _loop(_i) {
+      var fittingPlacement = placements.find(function (placement) {
+        var checks = checksMap.get(placement);
+
+        if (checks) {
+          return checks.slice(0, _i).every(function (check) {
+            return check;
+          });
+        }
+      });
+
+      if (fittingPlacement) {
+        firstFittingPlacement = fittingPlacement;
+        return "break";
+      }
+    };
+
+    for (var _i = numberOfChecks; _i > 0; _i--) {
+      var _ret = _loop(_i);
+
+      if (_ret === "break") break;
+    }
+  }
+
+  if (state.placement !== firstFittingPlacement) {
+    state.modifiersData[name]._skip = true;
+    state.placement = firstFittingPlacement;
+    state.reset = true;
+  }
+} // eslint-disable-next-line import/no-unused-modules
+
+
+var _default = {
+  name: 'flip',
+  enabled: true,
+  phase: 'main',
+  fn: flip,
+  requiresIfExists: ['offset'],
+  data: {
+    _skip: false
+  }
+};
+exports.default = _default;
+},{"../utils/getOppositePlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getOppositePlacement.js","../utils/getBasePlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getBasePlacement.js","../utils/getOppositeVariationPlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getOppositeVariationPlacement.js","../utils/detectOverflow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/detectOverflow.js","../utils/computeAutoPlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/computeAutoPlacement.js","../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js","../utils/getVariation.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getVariation.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/hide.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+
+var _enums = require("../enums.js");
+
+var _detectOverflow = _interopRequireDefault(require("../utils/detectOverflow.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function getSideOffsets(overflow, rect, preventedOffsets) {
+  if (preventedOffsets === void 0) {
+    preventedOffsets = {
+      x: 0,
+      y: 0
+    };
+  }
+
+  return {
+    top: overflow.top - rect.height - preventedOffsets.y,
+    right: overflow.right - rect.width + preventedOffsets.x,
+    bottom: overflow.bottom - rect.height + preventedOffsets.y,
+    left: overflow.left - rect.width - preventedOffsets.x
+  };
+}
+
+function isAnySideFullyClipped(overflow) {
+  return [_enums.top, _enums.right, _enums.bottom, _enums.left].some(function (side) {
+    return overflow[side] >= 0;
+  });
+}
+
+function hide(_ref) {
+  var state = _ref.state,
+      name = _ref.name;
+  var referenceRect = state.rects.reference;
+  var popperRect = state.rects.popper;
+  var preventedOffsets = state.modifiersData.preventOverflow;
+  var referenceOverflow = (0, _detectOverflow.default)(state, {
+    elementContext: 'reference'
+  });
+  var popperAltOverflow = (0, _detectOverflow.default)(state, {
+    altBoundary: true
+  });
+  var referenceClippingOffsets = getSideOffsets(referenceOverflow, referenceRect);
+  var popperEscapeOffsets = getSideOffsets(popperAltOverflow, popperRect, preventedOffsets);
+  var isReferenceHidden = isAnySideFullyClipped(referenceClippingOffsets);
+  var hasPopperEscaped = isAnySideFullyClipped(popperEscapeOffsets);
+  state.modifiersData[name] = {
+    referenceClippingOffsets: referenceClippingOffsets,
+    popperEscapeOffsets: popperEscapeOffsets,
+    isReferenceHidden: isReferenceHidden,
+    hasPopperEscaped: hasPopperEscaped
+  };
+  state.attributes.popper = Object.assign(Object.assign({}, state.attributes.popper), {}, {
+    'data-popper-reference-hidden': isReferenceHidden,
+    'data-popper-escaped': hasPopperEscaped
+  });
+} // eslint-disable-next-line import/no-unused-modules
+
+
+var _default = {
+  name: 'hide',
+  enabled: true,
+  phase: 'main',
+  requiresIfExists: ['preventOverflow'],
+  fn: hide
+};
+exports.default = _default;
+},{"../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js","../utils/detectOverflow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/detectOverflow.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/offset.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+exports.distanceAndSkiddingToXY = distanceAndSkiddingToXY;
+
+var _getBasePlacement = _interopRequireDefault(require("../utils/getBasePlacement.js"));
+
+var _enums = require("../enums.js");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function distanceAndSkiddingToXY(placement, rects, offset) {
+  var basePlacement = (0, _getBasePlacement.default)(placement);
+  var invertDistance = [_enums.left, _enums.top].indexOf(basePlacement) >= 0 ? -1 : 1;
+
+  var _ref = typeof offset === 'function' ? offset(Object.assign(Object.assign({}, rects), {}, {
+    placement: placement
+  })) : offset,
+      skidding = _ref[0],
+      distance = _ref[1];
+
+  skidding = skidding || 0;
+  distance = (distance || 0) * invertDistance;
+  return [_enums.left, _enums.right].indexOf(basePlacement) >= 0 ? {
+    x: distance,
+    y: skidding
+  } : {
+    x: skidding,
+    y: distance
+  };
+}
+
+function offset(_ref2) {
+  var state = _ref2.state,
+      options = _ref2.options,
+      name = _ref2.name;
+  var _options$offset = options.offset,
+      offset = _options$offset === void 0 ? [0, 0] : _options$offset;
+
+  var data = _enums.placements.reduce(function (acc, placement) {
+    acc[placement] = distanceAndSkiddingToXY(placement, state.rects, offset);
+    return acc;
+  }, {});
+
+  var _data$state$placement = data[state.placement],
+      x = _data$state$placement.x,
+      y = _data$state$placement.y;
+
+  if (state.modifiersData.popperOffsets != null) {
+    state.modifiersData.popperOffsets.x += x;
+    state.modifiersData.popperOffsets.y += y;
+  }
+
+  state.modifiersData[name] = data;
+} // eslint-disable-next-line import/no-unused-modules
+
+
+var _default = {
+  name: 'offset',
+  enabled: true,
+  phase: 'main',
+  requires: ['popperOffsets'],
+  fn: offset
+};
+exports.default = _default;
+},{"../utils/getBasePlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getBasePlacement.js","../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/popperOffsets.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+
+var _computeOffsets = _interopRequireDefault(require("../utils/computeOffsets.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function popperOffsets(_ref) {
+  var state = _ref.state,
+      name = _ref.name; // Offsets are the actual position the popper needs to have to be
+  // properly positioned near its reference element
+  // This is the most basic placement, and will be adjusted by
+  // the modifiers in the next step
+
+  state.modifiersData[name] = (0, _computeOffsets.default)({
+    reference: state.rects.reference,
+    element: state.rects.popper,
+    strategy: 'absolute',
+    placement: state.placement
+  });
+} // eslint-disable-next-line import/no-unused-modules
+
+
+var _default = {
+  name: 'popperOffsets',
+  enabled: true,
+  phase: 'read',
+  fn: popperOffsets,
+  data: {}
+};
+exports.default = _default;
+},{"../utils/computeOffsets.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/computeOffsets.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getAltAxis.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getAltAxis;
+
+function getAltAxis(axis) {
+  return axis === 'x' ? 'y' : 'x';
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/preventOverflow.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+
+var _enums = require("../enums.js");
+
+var _getBasePlacement = _interopRequireDefault(require("../utils/getBasePlacement.js"));
+
+var _getMainAxisFromPlacement = _interopRequireDefault(require("../utils/getMainAxisFromPlacement.js"));
+
+var _getAltAxis = _interopRequireDefault(require("../utils/getAltAxis.js"));
+
+var _within = _interopRequireDefault(require("../utils/within.js"));
+
+var _getLayoutRect = _interopRequireDefault(require("../dom-utils/getLayoutRect.js"));
+
+var _getOffsetParent = _interopRequireDefault(require("../dom-utils/getOffsetParent.js"));
+
+var _detectOverflow = _interopRequireDefault(require("../utils/detectOverflow.js"));
+
+var _getVariation = _interopRequireDefault(require("../utils/getVariation.js"));
+
+var _getFreshSideObject = _interopRequireDefault(require("../utils/getFreshSideObject.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function preventOverflow(_ref) {
+  var state = _ref.state,
+      options = _ref.options,
+      name = _ref.name;
+  var _options$mainAxis = options.mainAxis,
+      checkMainAxis = _options$mainAxis === void 0 ? true : _options$mainAxis,
+      _options$altAxis = options.altAxis,
+      checkAltAxis = _options$altAxis === void 0 ? false : _options$altAxis,
+      boundary = options.boundary,
+      rootBoundary = options.rootBoundary,
+      altBoundary = options.altBoundary,
+      padding = options.padding,
+      _options$tether = options.tether,
+      tether = _options$tether === void 0 ? true : _options$tether,
+      _options$tetherOffset = options.tetherOffset,
+      tetherOffset = _options$tetherOffset === void 0 ? 0 : _options$tetherOffset;
+  var overflow = (0, _detectOverflow.default)(state, {
+    boundary: boundary,
+    rootBoundary: rootBoundary,
+    padding: padding,
+    altBoundary: altBoundary
+  });
+  var basePlacement = (0, _getBasePlacement.default)(state.placement);
+  var variation = (0, _getVariation.default)(state.placement);
+  var isBasePlacement = !variation;
+  var mainAxis = (0, _getMainAxisFromPlacement.default)(basePlacement);
+  var altAxis = (0, _getAltAxis.default)(mainAxis);
+  var popperOffsets = state.modifiersData.popperOffsets;
+  var referenceRect = state.rects.reference;
+  var popperRect = state.rects.popper;
+  var tetherOffsetValue = typeof tetherOffset === 'function' ? tetherOffset(Object.assign(Object.assign({}, state.rects), {}, {
+    placement: state.placement
+  })) : tetherOffset;
+  var data = {
+    x: 0,
+    y: 0
+  };
+
+  if (!popperOffsets) {
+    return;
+  }
+
+  if (checkMainAxis) {
+    var mainSide = mainAxis === 'y' ? _enums.top : _enums.left;
+    var altSide = mainAxis === 'y' ? _enums.bottom : _enums.right;
+    var len = mainAxis === 'y' ? 'height' : 'width';
+    var offset = popperOffsets[mainAxis];
+    var min = popperOffsets[mainAxis] + overflow[mainSide];
+    var max = popperOffsets[mainAxis] - overflow[altSide];
+    var additive = tether ? -popperRect[len] / 2 : 0;
+    var minLen = variation === _enums.start ? referenceRect[len] : popperRect[len];
+    var maxLen = variation === _enums.start ? -popperRect[len] : -referenceRect[len]; // We need to include the arrow in the calculation so the arrow doesn't go
+    // outside the reference bounds
+
+    var arrowElement = state.elements.arrow;
+    var arrowRect = tether && arrowElement ? (0, _getLayoutRect.default)(arrowElement) : {
+      width: 0,
+      height: 0
+    };
+    var arrowPaddingObject = state.modifiersData['arrow#persistent'] ? state.modifiersData['arrow#persistent'].padding : (0, _getFreshSideObject.default)();
+    var arrowPaddingMin = arrowPaddingObject[mainSide];
+    var arrowPaddingMax = arrowPaddingObject[altSide]; // If the reference length is smaller than the arrow length, we don't want
+    // to include its full size in the calculation. If the reference is small
+    // and near the edge of a boundary, the popper can overflow even if the
+    // reference is not overflowing as well (e.g. virtual elements with no
+    // width or height)
+
+    var arrowLen = (0, _within.default)(0, referenceRect[len], arrowRect[len]);
+    var minOffset = isBasePlacement ? referenceRect[len] / 2 - additive - arrowLen - arrowPaddingMin - tetherOffsetValue : minLen - arrowLen - arrowPaddingMin - tetherOffsetValue;
+    var maxOffset = isBasePlacement ? -referenceRect[len] / 2 + additive + arrowLen + arrowPaddingMax + tetherOffsetValue : maxLen + arrowLen + arrowPaddingMax + tetherOffsetValue;
+    var arrowOffsetParent = state.elements.arrow && (0, _getOffsetParent.default)(state.elements.arrow);
+    var clientOffset = arrowOffsetParent ? mainAxis === 'y' ? arrowOffsetParent.clientTop || 0 : arrowOffsetParent.clientLeft || 0 : 0;
+    var offsetModifierValue = state.modifiersData.offset ? state.modifiersData.offset[state.placement][mainAxis] : 0;
+    var tetherMin = popperOffsets[mainAxis] + minOffset - offsetModifierValue - clientOffset;
+    var tetherMax = popperOffsets[mainAxis] + maxOffset - offsetModifierValue;
+    var preventedOffset = (0, _within.default)(tether ? Math.min(min, tetherMin) : min, offset, tether ? Math.max(max, tetherMax) : max);
+    popperOffsets[mainAxis] = preventedOffset;
+    data[mainAxis] = preventedOffset - offset;
+  }
+
+  if (checkAltAxis) {
+    var _mainSide = mainAxis === 'x' ? _enums.top : _enums.left;
+
+    var _altSide = mainAxis === 'x' ? _enums.bottom : _enums.right;
+
+    var _offset = popperOffsets[altAxis];
+
+    var _min = _offset + overflow[_mainSide];
+
+    var _max = _offset - overflow[_altSide];
+
+    var _preventedOffset = (0, _within.default)(_min, _offset, _max);
+
+    popperOffsets[altAxis] = _preventedOffset;
+    data[altAxis] = _preventedOffset - _offset;
+  }
+
+  state.modifiersData[name] = data;
+} // eslint-disable-next-line import/no-unused-modules
+
+
+var _default = {
+  name: 'preventOverflow',
+  enabled: true,
+  phase: 'main',
+  fn: preventOverflow,
+  requiresIfExists: ['offset']
+};
+exports.default = _default;
+},{"../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js","../utils/getBasePlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getBasePlacement.js","../utils/getMainAxisFromPlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getMainAxisFromPlacement.js","../utils/getAltAxis.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getAltAxis.js","../utils/within.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/within.js","../dom-utils/getLayoutRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getLayoutRect.js","../dom-utils/getOffsetParent.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getOffsetParent.js","../utils/detectOverflow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/detectOverflow.js","../utils/getVariation.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getVariation.js","../utils/getFreshSideObject.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getFreshSideObject.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/index.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+Object.defineProperty(exports, "applyStyles", {
+  enumerable: true,
+  get: function () {
+    return _applyStyles.default;
+  }
+});
+Object.defineProperty(exports, "arrow", {
+  enumerable: true,
+  get: function () {
+    return _arrow.default;
+  }
+});
+Object.defineProperty(exports, "computeStyles", {
+  enumerable: true,
+  get: function () {
+    return _computeStyles.default;
+  }
+});
+Object.defineProperty(exports, "eventListeners", {
+  enumerable: true,
+  get: function () {
+    return _eventListeners.default;
+  }
+});
+Object.defineProperty(exports, "flip", {
+  enumerable: true,
+  get: function () {
+    return _flip.default;
+  }
+});
+Object.defineProperty(exports, "hide", {
+  enumerable: true,
+  get: function () {
+    return _hide.default;
+  }
+});
+Object.defineProperty(exports, "offset", {
+  enumerable: true,
+  get: function () {
+    return _offset.default;
+  }
+});
+Object.defineProperty(exports, "popperOffsets", {
+  enumerable: true,
+  get: function () {
+    return _popperOffsets.default;
+  }
+});
+Object.defineProperty(exports, "preventOverflow", {
+  enumerable: true,
+  get: function () {
+    return _preventOverflow.default;
+  }
+});
+
+var _applyStyles = _interopRequireDefault(require("./applyStyles.js"));
+
+var _arrow = _interopRequireDefault(require("./arrow.js"));
+
+var _computeStyles = _interopRequireDefault(require("./computeStyles.js"));
+
+var _eventListeners = _interopRequireDefault(require("./eventListeners.js"));
+
+var _flip = _interopRequireDefault(require("./flip.js"));
+
+var _hide = _interopRequireDefault(require("./hide.js"));
+
+var _offset = _interopRequireDefault(require("./offset.js"));
+
+var _popperOffsets = _interopRequireDefault(require("./popperOffsets.js"));
+
+var _preventOverflow = _interopRequireDefault(require("./preventOverflow.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+},{"./applyStyles.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/applyStyles.js","./arrow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/arrow.js","./computeStyles.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/computeStyles.js","./eventListeners.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/eventListeners.js","./flip.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/flip.js","./hide.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/hide.js","./offset.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/offset.js","./popperOffsets.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/popperOffsets.js","./preventOverflow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/preventOverflow.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getHTMLElementScroll.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getHTMLElementScroll;
+
+function getHTMLElementScroll(element) {
+  return {
+    scrollLeft: element.scrollLeft,
+    scrollTop: element.scrollTop
+  };
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getNodeScroll.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getNodeScroll;
+
+var _getWindowScroll = _interopRequireDefault(require("./getWindowScroll.js"));
+
+var _getWindow = _interopRequireDefault(require("./getWindow.js"));
+
+var _instanceOf = require("./instanceOf.js");
+
+var _getHTMLElementScroll = _interopRequireDefault(require("./getHTMLElementScroll.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function getNodeScroll(node) {
+  if (node === (0, _getWindow.default)(node) || !(0, _instanceOf.isHTMLElement)(node)) {
+    return (0, _getWindowScroll.default)(node);
+  } else {
+    return (0, _getHTMLElementScroll.default)(node);
+  }
+}
+},{"./getWindowScroll.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindowScroll.js","./getWindow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindow.js","./instanceOf.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/instanceOf.js","./getHTMLElementScroll.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getHTMLElementScroll.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getCompositeRect.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = getCompositeRect;
+
+var _getBoundingClientRect = _interopRequireDefault(require("./getBoundingClientRect.js"));
+
+var _getNodeScroll = _interopRequireDefault(require("./getNodeScroll.js"));
+
+var _getNodeName = _interopRequireDefault(require("./getNodeName.js"));
+
+var _instanceOf = require("./instanceOf.js");
+
+var _getWindowScrollBarX = _interopRequireDefault(require("./getWindowScrollBarX.js"));
+
+var _getDocumentElement = _interopRequireDefault(require("./getDocumentElement.js"));
+
+var _isScrollParent = _interopRequireDefault(require("./isScrollParent.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// Returns the composite rect of an element relative to its offsetParent.
+// Composite means it takes into account transforms as well as layout.
+function getCompositeRect(elementOrVirtualElement, offsetParent, isFixed) {
+  if (isFixed === void 0) {
+    isFixed = false;
+  }
+
+  var documentElement = (0, _getDocumentElement.default)(offsetParent);
+  var rect = (0, _getBoundingClientRect.default)(elementOrVirtualElement);
+  var isOffsetParentAnElement = (0, _instanceOf.isHTMLElement)(offsetParent);
+  var scroll = {
+    scrollLeft: 0,
+    scrollTop: 0
+  };
+  var offsets = {
+    x: 0,
+    y: 0
+  };
+
+  if (isOffsetParentAnElement || !isOffsetParentAnElement && !isFixed) {
+    if ((0, _getNodeName.default)(offsetParent) !== 'body' || // https://github.com/popperjs/popper-core/issues/1078
+    (0, _isScrollParent.default)(documentElement)) {
+      scroll = (0, _getNodeScroll.default)(offsetParent);
+    }
+
+    if ((0, _instanceOf.isHTMLElement)(offsetParent)) {
+      offsets = (0, _getBoundingClientRect.default)(offsetParent);
+      offsets.x += offsetParent.clientLeft;
+      offsets.y += offsetParent.clientTop;
+    } else if (documentElement) {
+      offsets.x = (0, _getWindowScrollBarX.default)(documentElement);
+    }
+  }
+
+  return {
+    x: rect.left + scroll.scrollLeft - offsets.x,
+    y: rect.top + scroll.scrollTop - offsets.y,
+    width: rect.width,
+    height: rect.height
+  };
+}
+},{"./getBoundingClientRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getBoundingClientRect.js","./getNodeScroll.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getNodeScroll.js","./getNodeName.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getNodeName.js","./instanceOf.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/instanceOf.js","./getWindowScrollBarX.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getWindowScrollBarX.js","./getDocumentElement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getDocumentElement.js","./isScrollParent.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/isScrollParent.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/orderModifiers.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = orderModifiers;
+
+var _enums = require("../enums.js");
+
+// source: https://stackoverflow.com/questions/49875255
+function order(modifiers) {
+  var map = new Map();
+  var visited = new Set();
+  var result = [];
+  modifiers.forEach(function (modifier) {
+    map.set(modifier.name, modifier);
+  }); // On visiting object, check for its dependencies and visit them recursively
+
+  function sort(modifier) {
+    visited.add(modifier.name);
+    var requires = [].concat(modifier.requires || [], modifier.requiresIfExists || []);
+    requires.forEach(function (dep) {
+      if (!visited.has(dep)) {
+        var depModifier = map.get(dep);
+
+        if (depModifier) {
+          sort(depModifier);
+        }
+      }
+    });
+    result.push(modifier);
+  }
+
+  modifiers.forEach(function (modifier) {
+    if (!visited.has(modifier.name)) {
+      // check for visited object
+      sort(modifier);
+    }
+  });
+  return result;
+}
+
+function orderModifiers(modifiers) {
+  // order based on dependencies
+  var orderedModifiers = order(modifiers); // order based on phase
+
+  return _enums.modifierPhases.reduce(function (acc, phase) {
+    return acc.concat(orderedModifiers.filter(function (modifier) {
+      return modifier.phase === phase;
+    }));
+  }, []);
+}
+},{"../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/debounce.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = debounce;
+
+function debounce(fn) {
+  var pending;
+  return function () {
+    if (!pending) {
+      pending = new Promise(function (resolve) {
+        Promise.resolve().then(function () {
+          pending = undefined;
+          resolve(fn());
+        });
+      });
+    }
+
+    return pending;
+  };
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/format.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = format;
+
+function format(str) {
+  for (var _len = arguments.length, args = new Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
+    args[_key - 1] = arguments[_key];
+  }
+
+  return [].concat(args).reduce(function (p, c) {
+    return p.replace(/%s/, c);
+  }, str);
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/validateModifiers.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = validateModifiers;
+
+var _format = _interopRequireDefault(require("./format.js"));
+
+var _enums = require("../enums.js");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var INVALID_MODIFIER_ERROR = 'Popper: modifier "%s" provided an invalid %s property, expected %s but got %s';
+var MISSING_DEPENDENCY_ERROR = 'Popper: modifier "%s" requires "%s", but "%s" modifier is not available';
+var VALID_PROPERTIES = ['name', 'enabled', 'phase', 'fn', 'effect', 'requires', 'options'];
+
+function validateModifiers(modifiers) {
+  modifiers.forEach(function (modifier) {
+    Object.keys(modifier).forEach(function (key) {
+      switch (key) {
+        case 'name':
+          if (typeof modifier.name !== 'string') {
+            console.error((0, _format.default)(INVALID_MODIFIER_ERROR, String(modifier.name), '"name"', '"string"', "\"" + String(modifier.name) + "\""));
+          }
+
+          break;
+
+        case 'enabled':
+          if (typeof modifier.enabled !== 'boolean') {
+            console.error((0, _format.default)(INVALID_MODIFIER_ERROR, modifier.name, '"enabled"', '"boolean"', "\"" + String(modifier.enabled) + "\""));
+          }
+
+        case 'phase':
+          if (_enums.modifierPhases.indexOf(modifier.phase) < 0) {
+            console.error((0, _format.default)(INVALID_MODIFIER_ERROR, modifier.name, '"phase"', "either " + _enums.modifierPhases.join(', '), "\"" + String(modifier.phase) + "\""));
+          }
+
+          break;
+
+        case 'fn':
+          if (typeof modifier.fn !== 'function') {
+            console.error((0, _format.default)(INVALID_MODIFIER_ERROR, modifier.name, '"fn"', '"function"', "\"" + String(modifier.fn) + "\""));
+          }
+
+          break;
+
+        case 'effect':
+          if (typeof modifier.effect !== 'function') {
+            console.error((0, _format.default)(INVALID_MODIFIER_ERROR, modifier.name, '"effect"', '"function"', "\"" + String(modifier.fn) + "\""));
+          }
+
+          break;
+
+        case 'requires':
+          if (!Array.isArray(modifier.requires)) {
+            console.error((0, _format.default)(INVALID_MODIFIER_ERROR, modifier.name, '"requires"', '"array"', "\"" + String(modifier.requires) + "\""));
+          }
+
+          break;
+
+        case 'requiresIfExists':
+          if (!Array.isArray(modifier.requiresIfExists)) {
+            console.error((0, _format.default)(INVALID_MODIFIER_ERROR, modifier.name, '"requiresIfExists"', '"array"', "\"" + String(modifier.requiresIfExists) + "\""));
+          }
+
+          break;
+
+        case 'options':
+        case 'data':
+          break;
+
+        default:
+          console.error("PopperJS: an invalid property has been provided to the \"" + modifier.name + "\" modifier, valid properties are " + VALID_PROPERTIES.map(function (s) {
+            return "\"" + s + "\"";
+          }).join(', ') + "; but \"" + key + "\" was provided.");
+      }
+
+      modifier.requires && modifier.requires.forEach(function (requirement) {
+        if (modifiers.find(function (mod) {
+          return mod.name === requirement;
+        }) == null) {
+          console.error((0, _format.default)(MISSING_DEPENDENCY_ERROR, String(modifier.name), requirement, requirement));
+        }
+      });
+    });
+  });
+}
+},{"./format.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/format.js","../enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/uniqueBy.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = uniqueBy;
+
+function uniqueBy(arr, fn) {
+  var identifiers = new Set();
+  return arr.filter(function (item) {
+    var identifier = fn(item);
+
+    if (!identifiers.has(identifier)) {
+      identifiers.add(identifier);
+      return true;
+    }
+  });
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/mergeByName.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = mergeByName;
+
+function mergeByName(modifiers) {
+  var merged = modifiers.reduce(function (merged, current) {
+    var existing = merged[current.name];
+    merged[current.name] = existing ? Object.assign(Object.assign(Object.assign({}, existing), current), {}, {
+      options: Object.assign(Object.assign({}, existing.options), current.options),
+      data: Object.assign(Object.assign({}, existing.data), current.data)
+    }) : current;
+    return merged;
+  }, {}); // IE11 does not support Object.values
+
+  return Object.keys(merged).map(function (key) {
+    return merged[key];
+  });
+}
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/createPopper.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.createPopper = void 0;
+Object.defineProperty(exports, "detectOverflow", {
+  enumerable: true,
+  get: function () {
+    return _detectOverflow.default;
+  }
+});
+exports.popperGenerator = popperGenerator;
+
+var _getCompositeRect = _interopRequireDefault(require("./dom-utils/getCompositeRect.js"));
+
+var _getLayoutRect = _interopRequireDefault(require("./dom-utils/getLayoutRect.js"));
+
+var _listScrollParents = _interopRequireDefault(require("./dom-utils/listScrollParents.js"));
+
+var _getOffsetParent = _interopRequireDefault(require("./dom-utils/getOffsetParent.js"));
+
+var _getComputedStyle2 = _interopRequireDefault(require("./dom-utils/getComputedStyle.js"));
+
+var _orderModifiers = _interopRequireDefault(require("./utils/orderModifiers.js"));
+
+var _debounce = _interopRequireDefault(require("./utils/debounce.js"));
+
+var _validateModifiers = _interopRequireDefault(require("./utils/validateModifiers.js"));
+
+var _uniqueBy = _interopRequireDefault(require("./utils/uniqueBy.js"));
+
+var _getBasePlacement = _interopRequireDefault(require("./utils/getBasePlacement.js"));
+
+var _mergeByName = _interopRequireDefault(require("./utils/mergeByName.js"));
+
+var _detectOverflow = _interopRequireDefault(require("./utils/detectOverflow.js"));
+
+var _instanceOf = require("./dom-utils/instanceOf.js");
+
+var _enums = require("./enums.js");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var INVALID_ELEMENT_ERROR = 'Popper: Invalid reference or popper argument provided. They must be either a DOM element or virtual element.';
+var INFINITE_LOOP_ERROR = 'Popper: An infinite loop in the modifiers cycle has been detected! The cycle has been interrupted to prevent a browser crash.';
+var DEFAULT_OPTIONS = {
+  placement: 'bottom',
+  modifiers: [],
+  strategy: 'absolute'
+};
+
+function areValidElements() {
+  for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
+    args[_key] = arguments[_key];
+  }
+
+  return !args.some(function (element) {
+    return !(element && typeof element.getBoundingClientRect === 'function');
+  });
+}
+
+function popperGenerator(generatorOptions) {
+  if (generatorOptions === void 0) {
+    generatorOptions = {};
+  }
+
+  var _generatorOptions = generatorOptions,
+      _generatorOptions$def = _generatorOptions.defaultModifiers,
+      defaultModifiers = _generatorOptions$def === void 0 ? [] : _generatorOptions$def,
+      _generatorOptions$def2 = _generatorOptions.defaultOptions,
+      defaultOptions = _generatorOptions$def2 === void 0 ? DEFAULT_OPTIONS : _generatorOptions$def2;
+  return function createPopper(reference, popper, options) {
+    if (options === void 0) {
+      options = defaultOptions;
+    }
+
+    var state = {
+      placement: 'bottom',
+      orderedModifiers: [],
+      options: Object.assign(Object.assign({}, DEFAULT_OPTIONS), defaultOptions),
+      modifiersData: {},
+      elements: {
+        reference: reference,
+        popper: popper
+      },
+      attributes: {},
+      styles: {}
+    };
+    var effectCleanupFns = [];
+    var isDestroyed = false;
+    var instance = {
+      state: state,
+      setOptions: function setOptions(options) {
+        cleanupModifierEffects();
+        state.options = Object.assign(Object.assign(Object.assign({}, defaultOptions), state.options), options);
+        state.scrollParents = {
+          reference: (0, _instanceOf.isElement)(reference) ? (0, _listScrollParents.default)(reference) : reference.contextElement ? (0, _listScrollParents.default)(reference.contextElement) : [],
+          popper: (0, _listScrollParents.default)(popper)
+        }; // Orders the modifiers based on their dependencies and `phase`
+        // properties
+
+        var orderedModifiers = (0, _orderModifiers.default)((0, _mergeByName.default)([].concat(defaultModifiers, state.options.modifiers))); // Strip out disabled modifiers
+
+        state.orderedModifiers = orderedModifiers.filter(function (m) {
+          return m.enabled;
+        }); // Validate the provided modifiers so that the consumer will get warned
+        // if one of the modifiers is invalid for any reason
+
+        if ("development" !== "production") {
+          var modifiers = (0, _uniqueBy.default)([].concat(orderedModifiers, state.options.modifiers), function (_ref) {
+            var name = _ref.name;
+            return name;
+          });
+          (0, _validateModifiers.default)(modifiers);
+
+          if ((0, _getBasePlacement.default)(state.options.placement) === _enums.auto) {
+            var flipModifier = state.orderedModifiers.find(function (_ref2) {
+              var name = _ref2.name;
+              return name === 'flip';
+            });
+
+            if (!flipModifier) {
+              console.error(['Popper: "auto" placements require the "flip" modifier be', 'present and enabled to work.'].join(' '));
+            }
+          }
+
+          var _getComputedStyle = (0, _getComputedStyle2.default)(popper),
+              marginTop = _getComputedStyle.marginTop,
+              marginRight = _getComputedStyle.marginRight,
+              marginBottom = _getComputedStyle.marginBottom,
+              marginLeft = _getComputedStyle.marginLeft; // We no longer take into account `margins` on the popper, and it can
+          // cause bugs with positioning, so we'll warn the consumer
+
+
+          if ([marginTop, marginRight, marginBottom, marginLeft].some(function (margin) {
+            return parseFloat(margin);
+          })) {
+            console.warn(['Popper: CSS "margin" styles cannot be used to apply padding', 'between the popper and its reference element or boundary.', 'To replicate margin, use the `offset` modifier, as well as', 'the `padding` option in the `preventOverflow` and `flip`', 'modifiers.'].join(' '));
+          }
+        }
+
+        runModifierEffects();
+        return instance.update();
+      },
+      // Sync update – it will always be executed, even if not necessary. This
+      // is useful for low frequency updates where sync behavior simplifies the
+      // logic.
+      // For high frequency updates (e.g. `resize` and `scroll` events), always
+      // prefer the async Popper#update method
+      forceUpdate: function forceUpdate() {
+        if (isDestroyed) {
+          return;
+        }
+
+        var _state$elements = state.elements,
+            reference = _state$elements.reference,
+            popper = _state$elements.popper; // Don't proceed if `reference` or `popper` are not valid elements
+        // anymore
+
+        if (!areValidElements(reference, popper)) {
+          if ("development" !== "production") {
+            console.error(INVALID_ELEMENT_ERROR);
+          }
+
+          return;
+        } // Store the reference and popper rects to be read by modifiers
+
+
+        state.rects = {
+          reference: (0, _getCompositeRect.default)(reference, (0, _getOffsetParent.default)(popper), state.options.strategy === 'fixed'),
+          popper: (0, _getLayoutRect.default)(popper)
+        }; // Modifiers have the ability to reset the current update cycle. The
+        // most common use case for this is the `flip` modifier changing the
+        // placement, which then needs to re-run all the modifiers, because the
+        // logic was previously ran for the previous placement and is therefore
+        // stale/incorrect
+
+        state.reset = false;
+        state.placement = state.options.placement; // On each update cycle, the `modifiersData` property for each modifier
+        // is filled with the initial data specified by the modifier. This means
+        // it doesn't persist and is fresh on each update.
+        // To ensure persistent data, use `${name}#persistent`
+
+        state.orderedModifiers.forEach(function (modifier) {
+          return state.modifiersData[modifier.name] = Object.assign({}, modifier.data);
+        });
+        var __debug_loops__ = 0;
+
+        for (var index = 0; index < state.orderedModifiers.length; index++) {
+          if ("development" !== "production") {
+            __debug_loops__ += 1;
+
+            if (__debug_loops__ > 100) {
+              console.error(INFINITE_LOOP_ERROR);
+              break;
+            }
+          }
+
+          if (state.reset === true) {
+            state.reset = false;
+            index = -1;
+            continue;
+          }
+
+          var _state$orderedModifie = state.orderedModifiers[index],
+              fn = _state$orderedModifie.fn,
+              _state$orderedModifie2 = _state$orderedModifie.options,
+              _options = _state$orderedModifie2 === void 0 ? {} : _state$orderedModifie2,
+              name = _state$orderedModifie.name;
+
+          if (typeof fn === 'function') {
+            state = fn({
+              state: state,
+              options: _options,
+              name: name,
+              instance: instance
+            }) || state;
+          }
+        }
+      },
+      // Async and optimistically optimized update – it will not be executed if
+      // not necessary (debounced to run at most once-per-tick)
+      update: (0, _debounce.default)(function () {
+        return new Promise(function (resolve) {
+          instance.forceUpdate();
+          resolve(state);
+        });
+      }),
+      destroy: function destroy() {
+        cleanupModifierEffects();
+        isDestroyed = true;
+      }
+    };
+
+    if (!areValidElements(reference, popper)) {
+      if ("development" !== "production") {
+        console.error(INVALID_ELEMENT_ERROR);
+      }
+
+      return instance;
+    }
+
+    instance.setOptions(options).then(function (state) {
+      if (!isDestroyed && options.onFirstUpdate) {
+        options.onFirstUpdate(state);
+      }
+    }); // Modifiers have the ability to execute arbitrary code before the first
+    // update cycle runs. They will be executed in the same order as the update
+    // cycle. This is useful when a modifier adds some persistent data that
+    // other modifiers need to use, but the modifier is run after the dependent
+    // one.
+
+    function runModifierEffects() {
+      state.orderedModifiers.forEach(function (_ref3) {
+        var name = _ref3.name,
+            _ref3$options = _ref3.options,
+            options = _ref3$options === void 0 ? {} : _ref3$options,
+            effect = _ref3.effect;
+
+        if (typeof effect === 'function') {
+          var cleanupFn = effect({
+            state: state,
+            name: name,
+            instance: instance,
+            options: options
+          });
+
+          var noopFn = function noopFn() {};
+
+          effectCleanupFns.push(cleanupFn || noopFn);
+        }
+      });
+    }
+
+    function cleanupModifierEffects() {
+      effectCleanupFns.forEach(function (fn) {
+        return fn();
+      });
+      effectCleanupFns = [];
+    }
+
+    return instance;
+  };
+}
+
+var createPopper = /*#__PURE__*/popperGenerator(); // eslint-disable-next-line import/no-unused-modules
+
+exports.createPopper = createPopper;
+},{"./dom-utils/getCompositeRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getCompositeRect.js","./dom-utils/getLayoutRect.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getLayoutRect.js","./dom-utils/listScrollParents.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/listScrollParents.js","./dom-utils/getOffsetParent.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getOffsetParent.js","./dom-utils/getComputedStyle.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/getComputedStyle.js","./utils/orderModifiers.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/orderModifiers.js","./utils/debounce.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/debounce.js","./utils/validateModifiers.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/validateModifiers.js","./utils/uniqueBy.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/uniqueBy.js","./utils/getBasePlacement.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/getBasePlacement.js","./utils/mergeByName.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/mergeByName.js","./utils/detectOverflow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/utils/detectOverflow.js","./dom-utils/instanceOf.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/dom-utils/instanceOf.js","./enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/popper-lite.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.defaultModifiers = exports.createPopper = void 0;
+Object.defineProperty(exports, "detectOverflow", {
+  enumerable: true,
+  get: function () {
+    return _createPopper.detectOverflow;
+  }
+});
+Object.defineProperty(exports, "popperGenerator", {
+  enumerable: true,
+  get: function () {
+    return _createPopper.popperGenerator;
+  }
+});
+
+var _createPopper = require("./createPopper.js");
+
+var _eventListeners = _interopRequireDefault(require("./modifiers/eventListeners.js"));
+
+var _popperOffsets = _interopRequireDefault(require("./modifiers/popperOffsets.js"));
+
+var _computeStyles = _interopRequireDefault(require("./modifiers/computeStyles.js"));
+
+var _applyStyles = _interopRequireDefault(require("./modifiers/applyStyles.js"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var defaultModifiers = [_eventListeners.default, _popperOffsets.default, _computeStyles.default, _applyStyles.default];
+exports.defaultModifiers = defaultModifiers;
+var createPopper = /*#__PURE__*/(0, _createPopper.popperGenerator)({
+  defaultModifiers: defaultModifiers
+}); // eslint-disable-next-line import/no-unused-modules
+
+exports.createPopper = createPopper;
+},{"./createPopper.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/createPopper.js","./modifiers/eventListeners.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/eventListeners.js","./modifiers/popperOffsets.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/popperOffsets.js","./modifiers/computeStyles.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/computeStyles.js","./modifiers/applyStyles.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/applyStyles.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/popper.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+var _exportNames = {
+  createPopper: true,
+  defaultModifiers: true,
+  popperGenerator: true,
+  detectOverflow: true,
+  createPopperLite: true
+};
+exports.createPopper = void 0;
+Object.defineProperty(exports, "createPopperLite", {
+  enumerable: true,
+  get: function () {
+    return _popperLite.createPopper;
+  }
+});
+exports.defaultModifiers = void 0;
+Object.defineProperty(exports, "detectOverflow", {
+  enumerable: true,
+  get: function () {
+    return _createPopper.detectOverflow;
+  }
+});
+Object.defineProperty(exports, "popperGenerator", {
+  enumerable: true,
+  get: function () {
+    return _createPopper.popperGenerator;
+  }
+});
+
+var _createPopper = require("./createPopper.js");
+
+var _eventListeners = _interopRequireDefault(require("./modifiers/eventListeners.js"));
+
+var _popperOffsets = _interopRequireDefault(require("./modifiers/popperOffsets.js"));
+
+var _computeStyles = _interopRequireDefault(require("./modifiers/computeStyles.js"));
+
+var _applyStyles = _interopRequireDefault(require("./modifiers/applyStyles.js"));
+
+var _offset = _interopRequireDefault(require("./modifiers/offset.js"));
+
+var _flip = _interopRequireDefault(require("./modifiers/flip.js"));
+
+var _preventOverflow = _interopRequireDefault(require("./modifiers/preventOverflow.js"));
+
+var _arrow = _interopRequireDefault(require("./modifiers/arrow.js"));
+
+var _hide = _interopRequireDefault(require("./modifiers/hide.js"));
+
+var _popperLite = require("./popper-lite.js");
+
+var _index = require("./modifiers/index.js");
+
+Object.keys(_index).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  if (Object.prototype.hasOwnProperty.call(_exportNames, key)) return;
+  if (key in exports && exports[key] === _index[key]) return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _index[key];
+    }
+  });
+});
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var defaultModifiers = [_eventListeners.default, _popperOffsets.default, _computeStyles.default, _applyStyles.default, _offset.default, _flip.default, _preventOverflow.default, _arrow.default, _hide.default];
+exports.defaultModifiers = defaultModifiers;
+var createPopper = /*#__PURE__*/(0, _createPopper.popperGenerator)({
+  defaultModifiers: defaultModifiers
+}); // eslint-disable-next-line import/no-unused-modules
+
+exports.createPopper = createPopper;
+},{"./createPopper.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/createPopper.js","./modifiers/eventListeners.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/eventListeners.js","./modifiers/popperOffsets.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/popperOffsets.js","./modifiers/computeStyles.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/computeStyles.js","./modifiers/applyStyles.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/applyStyles.js","./modifiers/offset.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/offset.js","./modifiers/flip.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/flip.js","./modifiers/preventOverflow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/preventOverflow.js","./modifiers/arrow.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/arrow.js","./modifiers/hide.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/hide.js","./popper-lite.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/popper-lite.js","./modifiers/index.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/index.js"}],"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/index.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+var _exportNames = {
+  popperGenerator: true,
+  detectOverflow: true,
+  createPopperBase: true,
+  createPopper: true,
+  createPopperLite: true
+};
+Object.defineProperty(exports, "createPopper", {
+  enumerable: true,
+  get: function () {
+    return _popper.createPopper;
+  }
+});
+Object.defineProperty(exports, "createPopperBase", {
+  enumerable: true,
+  get: function () {
+    return _createPopper.createPopper;
+  }
+});
+Object.defineProperty(exports, "createPopperLite", {
+  enumerable: true,
+  get: function () {
+    return _popperLite.createPopper;
+  }
+});
+Object.defineProperty(exports, "detectOverflow", {
+  enumerable: true,
+  get: function () {
+    return _createPopper.detectOverflow;
+  }
+});
+Object.defineProperty(exports, "popperGenerator", {
+  enumerable: true,
+  get: function () {
+    return _createPopper.popperGenerator;
+  }
+});
+
+var _enums = require("./enums.js");
+
+Object.keys(_enums).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  if (Object.prototype.hasOwnProperty.call(_exportNames, key)) return;
+  if (key in exports && exports[key] === _enums[key]) return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _enums[key];
+    }
+  });
+});
+
+var _index = require("./modifiers/index.js");
+
+Object.keys(_index).forEach(function (key) {
+  if (key === "default" || key === "__esModule") return;
+  if (Object.prototype.hasOwnProperty.call(_exportNames, key)) return;
+  if (key in exports && exports[key] === _index[key]) return;
+  Object.defineProperty(exports, key, {
+    enumerable: true,
+    get: function () {
+      return _index[key];
+    }
+  });
+});
+
+var _createPopper = require("./createPopper.js");
+
+var _popper = require("./popper.js");
+
+var _popperLite = require("./popper-lite.js");
+},{"./enums.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/enums.js","./modifiers/index.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/modifiers/index.js","./createPopper.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/createPopper.js","./popper.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/popper.js","./popper-lite.js":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/popper-lite.js"}],"../node_modules/react-fast-compare/index.js":[function(require,module,exports) {
+/* global Map:readonly, Set:readonly, ArrayBuffer:readonly */
+
+var hasElementType = typeof Element !== 'undefined';
+var hasMap = typeof Map === 'function';
+var hasSet = typeof Set === 'function';
+var hasArrayBuffer = typeof ArrayBuffer === 'function' && !!ArrayBuffer.isView;
+
+// Note: We **don't** need `envHasBigInt64Array` in fde es6/index.js
+
+function equal(a, b) {
+  // START: fast-deep-equal es6/index.js 3.1.1
+  if (a === b) return true;
+
+  if (a && b && typeof a == 'object' && typeof b == 'object') {
+    if (a.constructor !== b.constructor) return false;
+
+    var length, i, keys;
+    if (Array.isArray(a)) {
+      length = a.length;
+      if (length != b.length) return false;
+      for (i = length; i-- !== 0;)
+        if (!equal(a[i], b[i])) return false;
+      return true;
+    }
+
+    // START: Modifications:
+    // 1. Extra `has<Type> &&` helpers in initial condition allow es6 code
+    //    to co-exist with es5.
+    // 2. Replace `for of` with es5 compliant iteration using `for`.
+    //    Basically, take:
+    //
+    //    ```js
+    //    for (i of a.entries())
+    //      if (!b.has(i[0])) return false;
+    //    ```
+    //
+    //    ... and convert to:
+    //
+    //    ```js
+    //    it = a.entries();
+    //    while (!(i = it.next()).done)
+    //      if (!b.has(i.value[0])) return false;
+    //    ```
+    //
+    //    **Note**: `i` access switches to `i.value`.
+    var it;
+    if (hasMap && (a instanceof Map) && (b instanceof Map)) {
+      if (a.size !== b.size) return false;
+      it = a.entries();
+      while (!(i = it.next()).done)
+        if (!b.has(i.value[0])) return false;
+      it = a.entries();
+      while (!(i = it.next()).done)
+        if (!equal(i.value[1], b.get(i.value[0]))) return false;
+      return true;
+    }
+
+    if (hasSet && (a instanceof Set) && (b instanceof Set)) {
+      if (a.size !== b.size) return false;
+      it = a.entries();
+      while (!(i = it.next()).done)
+        if (!b.has(i.value[0])) return false;
+      return true;
+    }
+    // END: Modifications
+
+    if (hasArrayBuffer && ArrayBuffer.isView(a) && ArrayBuffer.isView(b)) {
+      length = a.length;
+      if (length != b.length) return false;
+      for (i = length; i-- !== 0;)
+        if (a[i] !== b[i]) return false;
+      return true;
+    }
+
+    if (a.constructor === RegExp) return a.source === b.source && a.flags === b.flags;
+    if (a.valueOf !== Object.prototype.valueOf) return a.valueOf() === b.valueOf();
+    if (a.toString !== Object.prototype.toString) return a.toString() === b.toString();
+
+    keys = Object.keys(a);
+    length = keys.length;
+    if (length !== Object.keys(b).length) return false;
+
+    for (i = length; i-- !== 0;)
+      if (!Object.prototype.hasOwnProperty.call(b, keys[i])) return false;
+    // END: fast-deep-equal
+
+    // START: react-fast-compare
+    // custom handling for DOM elements
+    if (hasElementType && a instanceof Element) return false;
+
+    // custom handling for React/Preact
+    for (i = length; i-- !== 0;) {
+      if ((keys[i] === '_owner' || keys[i] === '__v' || keys[i] === '__o') && a.$$typeof) {
+        // React-specific: avoid traversing React elements' _owner
+        // Preact-specific: avoid traversing Preact elements' __v and __o
+        //    __v = $_original / $_vnode
+        //    __o = $_owner
+        // These properties contain circular references and are not needed when
+        // comparing the actual elements (and not their owners)
+        // .$$typeof and ._store on just reasonable markers of elements
+
+        continue;
+      }
+
+      // all other properties should be traversed as usual
+      if (!equal(a[keys[i]], b[keys[i]])) return false;
+    }
+    // END: react-fast-compare
+
+    // START: fast-deep-equal
+    return true;
+  }
+
+  return a !== a && b !== b;
+}
+// end fast-deep-equal
+
+module.exports = function isEqual(a, b) {
+  try {
+    return equal(a, b);
+  } catch (error) {
+    if (((error.message || '').match(/stack|recursion/i))) {
+      // warn on circular references, don't crash
+      // browsers give this different errors name and messages:
+      // chrome/safari: "RangeError", "Maximum call stack size exceeded"
+      // firefox: "InternalError", too much recursion"
+      // edge: "Error", "Out of stack space"
+      console.warn('react-fast-compare cannot handle circular refs');
+      return false;
+    }
+    // some other error. we should definitely know about these
+    throw error;
+  }
+};
+
+},{}],"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/usePopper.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.usePopper = void 0;
+
+var React = _interopRequireWildcard(require("react"));
+
+var _core = require("@popperjs/core");
+
+var _reactFastCompare = _interopRequireDefault(require("react-fast-compare"));
+
+var _utils = require("./utils");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _getRequireWildcardCache(nodeInterop) { if (typeof WeakMap !== "function") return null; var cacheBabelInterop = new WeakMap(); var cacheNodeInterop = new WeakMap(); return (_getRequireWildcardCache = function (nodeInterop) { return nodeInterop ? cacheNodeInterop : cacheBabelInterop; })(nodeInterop); }
+
+function _interopRequireWildcard(obj, nodeInterop) { if (!nodeInterop && obj && obj.__esModule) { return obj; } if (obj === null || typeof obj !== "object" && typeof obj !== "function") { return { default: obj }; } var cache = _getRequireWildcardCache(nodeInterop); if (cache && cache.has(obj)) { return cache.get(obj); } var newObj = {}; var hasPropertyDescriptor = Object.defineProperty && Object.getOwnPropertyDescriptor; for (var key in obj) { if (key !== "default" && Object.prototype.hasOwnProperty.call(obj, key)) { var desc = hasPropertyDescriptor ? Object.getOwnPropertyDescriptor(obj, key) : null; if (desc && (desc.get || desc.set)) { Object.defineProperty(newObj, key, desc); } else { newObj[key] = obj[key]; } } } newObj.default = obj; if (cache) { cache.set(obj, newObj); } return newObj; }
+
+var EMPTY_MODIFIERS = [];
+
+var usePopper = function usePopper(referenceElement, popperElement, options) {
+  if (options === void 0) {
+    options = {};
+  }
+
+  var prevOptions = React.useRef(null);
+  var optionsWithDefaults = {
+    onFirstUpdate: options.onFirstUpdate,
+    placement: options.placement || 'bottom',
+    strategy: options.strategy || 'absolute',
+    modifiers: options.modifiers || EMPTY_MODIFIERS
+  };
+
+  var _React$useState = React.useState({
+    styles: {
+      popper: {
+        position: optionsWithDefaults.strategy,
+        left: '0',
+        top: '0'
+      }
+    },
+    attributes: {}
+  }),
+      state = _React$useState[0],
+      setState = _React$useState[1];
+
+  var updateStateModifier = React.useMemo(function () {
+    return {
+      name: 'updateState',
+      enabled: true,
+      phase: 'write',
+      fn: function fn(_ref) {
+        var state = _ref.state;
+        var elements = Object.keys(state.elements);
+        setState({
+          styles: (0, _utils.fromEntries)(elements.map(function (element) {
+            return [element, state.styles[element] || {}];
+          })),
+          attributes: (0, _utils.fromEntries)(elements.map(function (element) {
+            return [element, state.attributes[element]];
+          }))
+        });
+      },
+      requires: ['computeStyles']
+    };
+  }, []);
+  var popperOptions = React.useMemo(function () {
+    var newOptions = {
+      onFirstUpdate: optionsWithDefaults.onFirstUpdate,
+      placement: optionsWithDefaults.placement,
+      strategy: optionsWithDefaults.strategy,
+      modifiers: [].concat(optionsWithDefaults.modifiers, [updateStateModifier, {
+        name: 'applyStyles',
+        enabled: false
+      }])
+    };
+
+    if ((0, _reactFastCompare.default)(prevOptions.current, newOptions)) {
+      return prevOptions.current || newOptions;
+    } else {
+      prevOptions.current = newOptions;
+      return newOptions;
+    }
+  }, [optionsWithDefaults.onFirstUpdate, optionsWithDefaults.placement, optionsWithDefaults.strategy, optionsWithDefaults.modifiers, updateStateModifier]);
+  var popperInstanceRef = React.useRef();
+  (0, _utils.useIsomorphicLayoutEffect)(function () {
+    if (popperInstanceRef.current) {
+      popperInstanceRef.current.setOptions(popperOptions);
+    }
+  }, [popperOptions]);
+  (0, _utils.useIsomorphicLayoutEffect)(function () {
+    if (referenceElement == null || popperElement == null) {
+      return;
+    }
+
+    var createPopper = options.createPopper || _core.createPopper;
+    var popperInstance = createPopper(referenceElement, popperElement, popperOptions);
+    popperInstanceRef.current = popperInstance;
+    return function () {
+      popperInstance.destroy();
+      popperInstanceRef.current = null;
+    };
+  }, [referenceElement, popperElement, options.createPopper]);
+  return {
+    state: popperInstanceRef.current ? popperInstanceRef.current.state : null,
+    styles: state.styles,
+    attributes: state.attributes,
+    update: popperInstanceRef.current ? popperInstanceRef.current.update : null,
+    forceUpdate: popperInstanceRef.current ? popperInstanceRef.current.forceUpdate : null
+  };
+};
+
+exports.usePopper = usePopper;
+},{"react":"../node_modules/react/index.js","@popperjs/core":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/index.js","react-fast-compare":"../node_modules/react-fast-compare/index.js","./utils":"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/utils.js"}],"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/Popper.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.Popper = Popper;
+
+var React = _interopRequireWildcard(require("react"));
+
+var _Manager = require("./Manager");
+
+var _utils = require("./utils");
+
+var _usePopper2 = require("./usePopper");
+
+function _getRequireWildcardCache(nodeInterop) { if (typeof WeakMap !== "function") return null; var cacheBabelInterop = new WeakMap(); var cacheNodeInterop = new WeakMap(); return (_getRequireWildcardCache = function (nodeInterop) { return nodeInterop ? cacheNodeInterop : cacheBabelInterop; })(nodeInterop); }
+
+function _interopRequireWildcard(obj, nodeInterop) { if (!nodeInterop && obj && obj.__esModule) { return obj; } if (obj === null || typeof obj !== "object" && typeof obj !== "function") { return { default: obj }; } var cache = _getRequireWildcardCache(nodeInterop); if (cache && cache.has(obj)) { return cache.get(obj); } var newObj = {}; var hasPropertyDescriptor = Object.defineProperty && Object.getOwnPropertyDescriptor; for (var key in obj) { if (key !== "default" && Object.prototype.hasOwnProperty.call(obj, key)) { var desc = hasPropertyDescriptor ? Object.getOwnPropertyDescriptor(obj, key) : null; if (desc && (desc.get || desc.set)) { Object.defineProperty(newObj, key, desc); } else { newObj[key] = obj[key]; } } } newObj.default = obj; if (cache) { cache.set(obj, newObj); } return newObj; }
+
+var NOOP = function NOOP() {
+  return void 0;
+};
+
+var NOOP_PROMISE = function NOOP_PROMISE() {
+  return Promise.resolve(null);
+};
+
+var EMPTY_MODIFIERS = [];
+
+function Popper(_ref) {
+  var _ref$placement = _ref.placement,
+      placement = _ref$placement === void 0 ? 'bottom' : _ref$placement,
+      _ref$strategy = _ref.strategy,
+      strategy = _ref$strategy === void 0 ? 'absolute' : _ref$strategy,
+      _ref$modifiers = _ref.modifiers,
+      modifiers = _ref$modifiers === void 0 ? EMPTY_MODIFIERS : _ref$modifiers,
+      referenceElement = _ref.referenceElement,
+      onFirstUpdate = _ref.onFirstUpdate,
+      innerRef = _ref.innerRef,
+      children = _ref.children;
+  var referenceNode = React.useContext(_Manager.ManagerReferenceNodeContext);
+
+  var _React$useState = React.useState(null),
+      popperElement = _React$useState[0],
+      setPopperElement = _React$useState[1];
+
+  var _React$useState2 = React.useState(null),
+      arrowElement = _React$useState2[0],
+      setArrowElement = _React$useState2[1];
+
+  React.useEffect(function () {
+    (0, _utils.setRef)(innerRef, popperElement);
+  }, [innerRef, popperElement]);
+  var options = React.useMemo(function () {
+    return {
+      placement: placement,
+      strategy: strategy,
+      onFirstUpdate: onFirstUpdate,
+      modifiers: [].concat(modifiers, [{
+        name: 'arrow',
+        enabled: arrowElement != null,
+        options: {
+          element: arrowElement
+        }
+      }])
+    };
+  }, [placement, strategy, onFirstUpdate, modifiers, arrowElement]);
+
+  var _usePopper = (0, _usePopper2.usePopper)(referenceElement || referenceNode, popperElement, options),
+      state = _usePopper.state,
+      styles = _usePopper.styles,
+      forceUpdate = _usePopper.forceUpdate,
+      update = _usePopper.update;
+
+  var childrenProps = React.useMemo(function () {
+    return {
+      ref: setPopperElement,
+      style: styles.popper,
+      placement: state ? state.placement : placement,
+      hasPopperEscaped: state && state.modifiersData.hide ? state.modifiersData.hide.hasPopperEscaped : null,
+      isReferenceHidden: state && state.modifiersData.hide ? state.modifiersData.hide.isReferenceHidden : null,
+      arrowProps: {
+        style: styles.arrow,
+        ref: setArrowElement
+      },
+      forceUpdate: forceUpdate || NOOP,
+      update: update || NOOP_PROMISE
+    };
+  }, [setPopperElement, setArrowElement, placement, state, styles, update, forceUpdate]);
+  return (0, _utils.unwrapArray)(children)(childrenProps);
+}
+},{"react":"../node_modules/react/index.js","./Manager":"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/Manager.js","./utils":"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/utils.js","./usePopper":"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/usePopper.js"}],"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/Reference.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.Reference = Reference;
+
+var React = _interopRequireWildcard(require("react"));
+
+var _warning = _interopRequireDefault(require("warning"));
+
+var _Manager = require("./Manager");
+
+var _utils = require("./utils");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _getRequireWildcardCache(nodeInterop) { if (typeof WeakMap !== "function") return null; var cacheBabelInterop = new WeakMap(); var cacheNodeInterop = new WeakMap(); return (_getRequireWildcardCache = function (nodeInterop) { return nodeInterop ? cacheNodeInterop : cacheBabelInterop; })(nodeInterop); }
+
+function _interopRequireWildcard(obj, nodeInterop) { if (!nodeInterop && obj && obj.__esModule) { return obj; } if (obj === null || typeof obj !== "object" && typeof obj !== "function") { return { default: obj }; } var cache = _getRequireWildcardCache(nodeInterop); if (cache && cache.has(obj)) { return cache.get(obj); } var newObj = {}; var hasPropertyDescriptor = Object.defineProperty && Object.getOwnPropertyDescriptor; for (var key in obj) { if (key !== "default" && Object.prototype.hasOwnProperty.call(obj, key)) { var desc = hasPropertyDescriptor ? Object.getOwnPropertyDescriptor(obj, key) : null; if (desc && (desc.get || desc.set)) { Object.defineProperty(newObj, key, desc); } else { newObj[key] = obj[key]; } } } newObj.default = obj; if (cache) { cache.set(obj, newObj); } return newObj; }
+
+function Reference(_ref) {
+  var children = _ref.children,
+      innerRef = _ref.innerRef;
+  var setReferenceNode = React.useContext(_Manager.ManagerReferenceNodeSetterContext);
+  var refHandler = React.useCallback(function (node) {
+    (0, _utils.setRef)(innerRef, node);
+    (0, _utils.safeInvoke)(setReferenceNode, node);
+  }, [innerRef, setReferenceNode]); // ran on unmount
+
+  React.useEffect(function () {
+    return function () {
+      return (0, _utils.setRef)(innerRef, null);
+    };
+  });
+  React.useEffect(function () {
+    (0, _warning.default)(Boolean(setReferenceNode), '`Reference` should not be used outside of a `Manager` component.');
+  }, [setReferenceNode]);
+  return (0, _utils.unwrapArray)(children)({
+    ref: refHandler
+  });
+}
+},{"react":"../node_modules/react/index.js","warning":"../node_modules/warning/warning.js","./Manager":"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/Manager.js","./utils":"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/utils.js"}],"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/index.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+Object.defineProperty(exports, "Manager", {
+  enumerable: true,
+  get: function () {
+    return _Manager.Manager;
+  }
+});
+Object.defineProperty(exports, "Popper", {
+  enumerable: true,
+  get: function () {
+    return _Popper.Popper;
+  }
+});
+Object.defineProperty(exports, "Reference", {
+  enumerable: true,
+  get: function () {
+    return _Reference.Reference;
+  }
+});
+Object.defineProperty(exports, "usePopper", {
+  enumerable: true,
+  get: function () {
+    return _usePopper.usePopper;
+  }
+});
+
+var _Popper = require("./Popper");
+
+var _Manager = require("./Manager");
+
+var _Reference = require("./Reference");
+
+var _usePopper = require("./usePopper");
+},{"./Popper":"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/Popper.js","./Manager":"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/Manager.js","./Reference":"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/Reference.js","./usePopper":"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/usePopper.js"}],"../node_modules/mdb-react-ui-kit/dist/mdb-react-ui-kit.esm.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.MDBValidation = exports.MDBTypography = exports.MDBTooltip = exports.MDBTabsPane = exports.MDBTabsLink = exports.MDBTabsItem = exports.MDBTabsContent = exports.MDBTabs = exports.MDBTableHead = exports.MDBTableBody = exports.MDBTable = exports.MDBSwitch = exports.MDBSpinner = exports.MDBScrollspySection = exports.MDBScrollspyNavList = exports.MDBScrollspyNavLink = exports.MDBScrollspyNavItem = exports.MDBScrollspy = exports.MDBRow = exports.MDBRipple = exports.MDBRange = exports.MDBRadio = exports.MDBProgressBar = exports.MDBProgress = exports.MDBPopoverHeader = exports.MDBPopoverBody = exports.MDBPopover = exports.MDBPaginationLink = exports.MDBPaginationItem = exports.MDBPagination = exports.MDBNavbarToggler = exports.MDBNavbarNav = exports.MDBNavbarLink = exports.MDBNavbarItem = exports.MDBNavbarBrand = exports.MDBNavbar = exports.MDBModalTitle = exports.MDBModalHeader = exports.MDBModalFooter = exports.MDBModalDialog = exports.MDBModalContent = exports.MDBModalBody = exports.MDBModal = exports.MDBListGroupItem = exports.MDBListGroup = exports.MDBInputGroupText = exports.MDBInputGroupElement = exports.MDBInputGroup = exports.MDBInput = exports.MDBIcon = exports.MDBFooter = exports.MDBFile = exports.MDBDropdownToggle = exports.MDBDropdownMenu = exports.MDBDropdownLink = exports.MDBDropdownItem = exports.MDBDropdownHeader = exports.MDBDropdownDivider = exports.MDBDropdown = exports.MDBContainer = exports.MDBCollapse = exports.MDBCol = exports.MDBCheckbox = exports.MDBCarouselItem = exports.MDBCarouselInner = exports.MDBCarouselElement = exports.MDBCarouselCaption = exports.MDBCarousel = exports.MDBCardTitle = exports.MDBCardText = exports.MDBCardSubTitle = exports.MDBCardOverlay = exports.MDBCardLink = exports.MDBCardImage = exports.MDBCardHeader = exports.MDBCardGroup = exports.MDBCardFooter = exports.MDBCardBody = exports.MDBCard = exports.MDBBtnGroup = exports.MDBBtn = exports.MDBBreadcrumbItem = exports.MDBBreadcrumb = exports.MDBBadge = exports.MDBAccordionItem = exports.MDBAccordion = void 0;
+
+var _react = _interopRequireWildcard(require("react"));
+
+var _clsx = _interopRequireDefault(require("clsx"));
+
+var _reactDom = _interopRequireDefault(require("react-dom"));
+
+var _reactPopper = require("react-popper");
+
+var _core = require("@popperjs/core");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _getRequireWildcardCache(nodeInterop) { if (typeof WeakMap !== "function") return null; var cacheBabelInterop = new WeakMap(); var cacheNodeInterop = new WeakMap(); return (_getRequireWildcardCache = function (nodeInterop) { return nodeInterop ? cacheNodeInterop : cacheBabelInterop; })(nodeInterop); }
+
+function _interopRequireWildcard(obj, nodeInterop) { if (!nodeInterop && obj && obj.__esModule) { return obj; } if (obj === null || typeof obj !== "object" && typeof obj !== "function") { return { default: obj }; } var cache = _getRequireWildcardCache(nodeInterop); if (cache && cache.has(obj)) { return cache.get(obj); } var newObj = {}; var hasPropertyDescriptor = Object.defineProperty && Object.getOwnPropertyDescriptor; for (var key in obj) { if (key !== "default" && Object.prototype.hasOwnProperty.call(obj, key)) { var desc = hasPropertyDescriptor ? Object.getOwnPropertyDescriptor(obj, key) : null; if (desc && (desc.get || desc.set)) { Object.defineProperty(newObj, key, desc); } else { newObj[key] = obj[key]; } } } newObj.default = obj; if (cache) { cache.set(obj, newObj); } return newObj; }
+
+var u = function () {
+  return u = Object.assign || function (e) {
+    for (var t, a = 1, r = arguments.length; a < r; a++) for (var n in t = arguments[a]) Object.prototype.hasOwnProperty.call(t, n) && (e[n] = t[n]);
+
+    return e;
+  }, u.apply(this, arguments);
+};
+
+function f(e, t) {
+  var a = {};
+
+  for (var r in e) Object.prototype.hasOwnProperty.call(e, r) && t.indexOf(r) < 0 && (a[r] = e[r]);
+
+  if (null != e && "function" == typeof Object.getOwnPropertySymbols) {
+    var n = 0;
+
+    for (r = Object.getOwnPropertySymbols(e); n < r.length; n++) t.indexOf(r[n]) < 0 && Object.prototype.propertyIsEnumerable.call(e, r[n]) && (a[r[n]] = e[r[n]]);
+  }
+
+  return a;
+}
+
+var m = _react.default.forwardRef(function (t, a) {
+  var r = t.breakpoint,
+      n = t.fluid,
+      l = t.children,
+      o = t.className,
+      i = t.tag,
+      s = f(t, ["breakpoint", "fluid", "children", "className", "tag"]),
+      d = (0, _clsx.default)("".concat(n ? "container-fluid" : "container".concat(r ? "-" + r : "")), o);
+  return _react.default.createElement(i, u({
+    className: d
+  }, s, {
+    ref: a
+  }), l);
+});
+
+exports.MDBContainer = m;
+m.defaultProps = {
+  tag: "div"
+};
+
+var p = _react.default.forwardRef(function (t, a) {
+  var r = t.center,
+      n = t.children,
+      l = t.className,
+      o = t.end,
+      i = t.lg,
+      s = t.md,
+      d = t.offsetLg,
+      m = t.offsetMd,
+      p = t.offsetSm,
+      v = t.order,
+      g = t.size,
+      h = t.sm,
+      b = t.start,
+      N = t.tag,
+      w = t.xl,
+      E = t.xxl,
+      y = t.xs,
+      k = f(t, ["center", "children", "className", "end", "lg", "md", "offsetLg", "offsetMd", "offsetSm", "order", "size", "sm", "start", "tag", "xl", "xxl", "xs"]),
+      C = (0, _clsx.default)(g && "col-".concat(g), y && "col-xs-".concat(y), h && "col-sm-".concat(h), s && "col-md-".concat(s), i && "col-lg-".concat(i), w && "col-xl-".concat(w), E && "col-xxl-".concat(E), g || y || h || s || i || w || E ? "" : "col", v && "order-".concat(v), b && "align-self-start", r && "align-self-center", o && "align-self-end", p && "offset-sm-".concat(p), m && "offset-md-".concat(m), d && "offset-lg-".concat(d), l);
+  return _react.default.createElement(N, u({
+    className: C,
+    ref: a
+  }, k), n);
+});
+
+exports.MDBCol = p;
+p.defaultProps = {
+  tag: "div"
+};
+
+var v = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.color,
+      l = t.pill,
+      o = t.dot,
+      i = t.tag,
+      s = t.children,
+      d = t.notification,
+      m = f(t, ["className", "color", "pill", "dot", "tag", "children", "notification"]),
+      p = (0, _clsx.default)("badge", "".concat(n ? "bg-" + n : "bg-primary"), o && "badge-dot", l && "rounded-pill", d && "badge-notification", r);
+  return _react.default.createElement(i, u({
+    className: p,
+    ref: a
+  }, m), s);
+});
+
+exports.MDBBadge = v;
+v.defaultProps = {
+  tag: "span"
+};
+
+var g = function (r) {
+  var n = f(r, []),
+      l = (0, _react.useState)(!1),
+      o = l[0],
+      i = l[1],
+      s = (0, _clsx.default)("ripple-wave", o && "active");
+  return (0, _react.useEffect)(function () {
+    var e = setTimeout(function () {
+      i(!0);
+    }, 50);
+    return function () {
+      clearTimeout(e);
+    };
+  }, []), _react.default.createElement("div", u({
+    className: s
+  }, n));
+},
+    h = function (n) {
+  var l = n.className,
+      o = n.rippleTag,
+      i = n.rippleCentered,
+      s = n.rippleDuration,
+      d = n.rippleUnbound,
+      m = n.rippleRadius,
+      p = n.rippleColor,
+      v = n.children,
+      h = n.onClick,
+      b = n.rippleRef,
+      N = f(n, ["className", "rippleTag", "rippleCentered", "rippleDuration", "rippleUnbound", "rippleRadius", "rippleColor", "children", "onClick", "rippleRef"]),
+      w = (0, _react.useRef)(null),
+      E = b || w,
+      y = [0, 0, 0],
+      k = ["primary", "secondary", "success", "danger", "warning", "info", "light", "dark"],
+      C = (0, _react.useState)([]),
+      R = C[0],
+      P = C[1],
+      x = (0, _react.useState)(!1),
+      T = x[0],
+      L = x[1],
+      O = (0, _clsx.default)("ripple", "ripple-surface", d && "ripple-surface-unbound", T && "ripple-surface-".concat(p), l),
+      S = function () {
+    if (k.find(function (e) {
+      return e === (null == p ? void 0 : p.toLowerCase());
+    })) return L(!0);
+    var e = I(p).join(","),
+        t = "rgba({{color}}, 0.2) 0, rgba({{color}}, 0.3) 40%, rgba({{color}}, 0.4) 50%, rgba({{color}}, 0.5) 60%, rgba({{color}}, 0) 70%".split("{{color}}").join("".concat(e));
+    return "radial-gradient(circle, ".concat(t, ")");
+  },
+      I = function (e) {
+    return "transparent" === e.toLowerCase() ? y : "#" === e[0] ? function (e) {
+      return e.length < 7 && (e = "#".concat(e[1]).concat(e[1]).concat(e[2]).concat(e[2]).concat(e[3]).concat(e[3])), [parseInt(e.substr(1, 2), 16), parseInt(e.substr(3, 2), 16), parseInt(e.substr(5, 2), 16)];
+    }(e) : (-1 === e.indexOf("rgb") && (e = function (e) {
+      var t = document.body.appendChild(document.createElement("fictum")),
+          a = "rgb(1, 2, 3)";
+      return t.style.color = a, t.style.color !== a ? y : (t.style.color = e, t.style.color === a || "" === t.style.color ? y : (e = getComputedStyle(t).color, document.body.removeChild(t), e));
+    }(e)), 0 === e.indexOf("rgb") ? function (e) {
+      return (e = e.match(/[.\d]+/g).map(function (e) {
+        return +Number(e);
+      })).length = 3, e;
+    }(e) : y);
+  },
+      z = function (e) {
+    var t = E.current.getBoundingClientRect(),
+        a = e.clientX - t.left,
+        r = e.clientY - t.top,
+        n = t.height,
+        l = t.width,
+        o = {
+      delay: s && .5 * s,
+      duration: s && s - .5 * s
+    },
+        c = function (e) {
+      var t = e.offsetX,
+          a = e.offsetY,
+          r = e.height,
+          n = e.width,
+          l = a <= r / 2,
+          o = t <= n / 2,
+          c = function (e, t) {
+        return Math.sqrt(Math.pow(e, 2) + Math.pow(t, 2));
+      },
+          i = a === r / 2 && t === n / 2,
+          s = !0 === l && !1 === o,
+          d = !0 === l && !0 === o,
+          u = !1 === l && !0 === o,
+          f = !1 === l && !1 === o,
+          m = {
+        topLeft: c(t, a),
+        topRight: c(n - t, a),
+        bottomLeft: c(t, r - a),
+        bottomRight: c(n - t, r - a)
+      },
+          p = 0;
+
+      return i || f ? p = m.topLeft : u ? p = m.topRight : d ? p = m.bottomRight : s && (p = m.bottomLeft), 2 * p;
+    }({
+      offsetX: i ? n / 2 : a,
+      offsetY: i ? l / 2 : r,
+      height: n,
+      width: l
+    }),
+        d = m || c / 2,
+        f = {
+      left: "".concat(i ? l / 2 - d : a - d, "px"),
+      top: "".concat(i ? n / 2 - d : r - d, "px"),
+      height: "".concat(m ? 2 * m : c, "px"),
+      width: "".concat(m ? 2 * m : c, "px"),
+      transitionDelay: "0s, ".concat(o.delay, "ms"),
+      transitionDuration: "".concat(s, "ms, ").concat(o.duration, "ms")
+    };
+
+    return T ? f : u(u({}, f), {
+      backgroundImage: "".concat(S())
+    });
+  };
+
+  return (0, _react.useEffect)(function () {
+    var e = setTimeout(function () {
+      R.length > 0 && P(R.splice(1, R.length - 1));
+    }, s);
+    return function () {
+      clearTimeout(e);
+    };
+  }, [s, R]), _react.default.createElement(o, u({
+    className: O,
+    onClick: function (e) {
+      return function (e) {
+        var t = z(e),
+            a = R.concat(t);
+        P(a), h && h(e);
+      }(e);
+    },
+    ref: E
+  }, N), v, R.map(function (t, a) {
+    return _react.default.createElement(g, {
+      key: a,
+      style: t
+    });
+  }));
+};
+
+exports.MDBRipple = h;
+h.defaultProps = {
+  rippleTag: "div",
+  rippleDuration: 500,
+  rippleRadius: 0,
+  rippleColor: "dark"
+};
+
+var b = _react.default.forwardRef(function (a, r) {
+  var n,
+      l = a.className,
+      o = a.color,
+      i = a.outline,
+      s = a.children,
+      d = a.rounded,
+      m = a.disabled,
+      p = a.floating,
+      v = a.size,
+      g = a.href,
+      b = a.block,
+      N = a.active,
+      w = a.toggle,
+      E = a.noRipple,
+      y = a.tag,
+      k = f(a, ["className", "color", "outline", "children", "rounded", "disabled", "floating", "size", "href", "block", "active", "toggle", "noRipple", "tag"]),
+      C = (0, _react.useState)(N || !1),
+      R = C[0],
+      P = C[1],
+      x = o && ["light", "link"].includes(o) || i ? "dark" : "light";
+  n = "none" !== o ? i ? o ? "btn-outline-".concat(o) : "btn-outline-primary" : o ? "btn-".concat(o) : "btn-primary" : "";
+  var T = (0, _clsx.default)("none" !== o && "btn", n, d && "btn-rounded", p && "btn-floating", v && "btn-".concat(v), "".concat((g || "button" !== y) && m ? "disabled" : ""), b && "btn-block", R && "active", l);
+  return g && "a" !== y && (y = "a"), ["hr", "img", "input"].includes(y) || E ? _react.default.createElement(y, u({
+    className: T,
+    onClick: w ? function () {
+      P(!R);
+    } : void 0,
+    disabled: !(!m || "button" !== y) || void 0,
+    href: g,
+    ref: r
+  }, k), s) : _react.default.createElement(h, u({
+    rippleTag: y,
+    rippleColor: x,
+    className: T,
+    onClick: w ? function () {
+      P(!R);
+    } : void 0,
+    disabled: !(!m || "button" !== y) || void 0,
+    href: g,
+    ref: r
+  }, k), s);
+});
+
+exports.MDBBtn = b;
+b.defaultProps = {
+  tag: "button",
+  role: "button",
+  color: "primary"
+};
+
+var N = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.shadow,
+      o = t.toolbar,
+      i = t.size,
+      s = t.vertical,
+      d = t.tag,
+      m = f(t, ["className", "children", "shadow", "toolbar", "size", "vertical", "tag"]),
+      p = (0, _clsx.default)(o ? "btn-toolbar" : s ? "btn-group-vertical" : "btn-group", l && "shadow-".concat(l), i && "btn-group-".concat(i), r);
+  return _react.default.createElement(d, u({
+    className: p,
+    ref: a
+  }, m), n);
+});
+
+exports.MDBBtnGroup = N;
+N.defaultProps = {
+  tag: "div",
+  role: "group"
+};
+
+var w = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = t.color,
+      i = t.grow,
+      s = t.size,
+      d = f(t, ["className", "children", "tag", "color", "grow", "size"]),
+      m = (0, _clsx.default)("".concat(i ? "spinner-grow" : "spinner-border"), o && "text-".concat(o), "".concat(s ? i ? "spinner-grow-" + s : "spinner-border-" + s : ""), r);
+  return _react.default.createElement(l, u({
+    className: m,
+    ref: a
+  }, d), n);
+});
+
+exports.MDBSpinner = w;
+w.defaultProps = {
+  tag: "div"
+};
+
+var E = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.border,
+      o = t.background,
+      i = t.tag,
+      s = t.shadow,
+      d = t.alignment,
+      m = f(t, ["className", "children", "border", "background", "tag", "shadow", "alignment"]),
+      p = (0, _clsx.default)("card", l && "border border-".concat(l), o && "bg-".concat(o), s && "shadow-".concat(s), d && "text-".concat(d), r);
+  return _react.default.createElement(i, u({
+    className: p,
+    ref: a
+  }, m), n);
+});
+
+exports.MDBCard = E;
+E.defaultProps = {
+  tag: "div"
+};
+
+var y = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.border,
+      o = t.background,
+      i = t.tag,
+      s = f(t, ["className", "children", "border", "background", "tag"]),
+      d = (0, _clsx.default)("card-header", l && "border-".concat(l), o && "bg-".concat(o), r);
+  return _react.default.createElement(i, u({
+    className: d
+  }, s, {
+    ref: a
+  }), n);
+});
+
+exports.MDBCardHeader = y;
+y.defaultProps = {
+  tag: "div"
+};
+
+var k = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = f(t, ["className", "children", "tag"]),
+      i = (0, _clsx.default)("card-subtitle", r);
+  return _react.default.createElement(l, u({
+    className: i
+  }, o, {
+    ref: a
+  }), n);
+});
+
+exports.MDBCardSubTitle = k;
+k.defaultProps = {
+  tag: "p"
+};
+
+var C = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = f(t, ["className", "children", "tag"]),
+      i = (0, _clsx.default)("card-title", r);
+  return _react.default.createElement(l, u({
+    className: i
+  }, o, {
+    ref: a
+  }), n);
+});
+
+exports.MDBCardTitle = C;
+C.defaultProps = {
+  tag: "h5"
+};
+
+var R = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = f(t, ["className", "children", "tag"]),
+      i = (0, _clsx.default)("card-text", r);
+  return _react.default.createElement(l, u({
+    className: i
+  }, o, {
+    ref: a
+  }), n);
+});
+
+exports.MDBCardText = R;
+R.defaultProps = {
+  tag: "p"
+};
+
+var P = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = f(t, ["className", "children", "tag"]),
+      i = (0, _clsx.default)("card-body", r);
+  return _react.default.createElement(l, u({
+    className: i
+  }, o, {
+    ref: a
+  }), n);
+});
+
+exports.MDBCardBody = P;
+P.defaultProps = {
+  tag: "div"
+};
+
+var x = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.border,
+      o = t.background,
+      i = t.tag,
+      s = f(t, ["className", "children", "border", "background", "tag"]),
+      d = (0, _clsx.default)("card-footer", l && "border-".concat(l), o && "bg-".concat(o), r);
+  return _react.default.createElement(i, u({
+    className: d
+  }, s, {
+    ref: a
+  }), n);
+});
+
+exports.MDBCardFooter = x;
+x.defaultProps = {
+  tag: "div"
+};
+
+var T = function (t) {
+  var a = t.className,
+      r = t.children,
+      n = t.overlay,
+      l = t.position,
+      o = t.fluid,
+      i = f(t, ["className", "children", "overlay", "position", "fluid"]),
+      s = (0, _clsx.default)(l && "card-img-".concat(l), o && "img-fluid", n && "card-img", a);
+  return _react.default.createElement("img", u({
+    className: s
+  }, i), r);
+},
+    L = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = f(t, ["className", "children", "tag"]),
+      i = (0, _clsx.default)("card-img-overlay", r);
+  return _react.default.createElement(l, u({
+    className: i
+  }, o, {
+    ref: a
+  }), n);
+});
+
+exports.MDBCardOverlay = L;
+exports.MDBCardImage = T;
+L.defaultProps = {
+  tag: "div"
+};
+
+var O = function (t) {
+  var a = t.className,
+      r = t.children,
+      n = f(t, ["className", "children"]),
+      l = (0, _clsx.default)("card-link", a);
+  return _react.default.createElement("a", u({
+    className: l
+  }, n), r);
+},
+    S = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = f(t, ["className", "children", "tag"]),
+      i = (0, _clsx.default)("card-group", r);
+  return _react.default.createElement(l, u({
+    className: i
+  }, o, {
+    ref: a
+  }), n);
+});
+
+exports.MDBCardGroup = S;
+exports.MDBCardLink = O;
+S.defaultProps = {
+  tag: "div"
+};
+
+var I = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.tag,
+      l = t.horizontal,
+      o = t.horizontalSize,
+      i = t.flush,
+      s = t.children,
+      d = f(t, ["className", "tag", "horizontal", "horizontalSize", "flush", "children"]),
+      m = (0, _clsx.default)("list-group", l && (o ? "list-group-horizontal-".concat(o) : "list-group-horizontal"), i && "list-group-flush", r);
+  return _react.default.createElement(n, u({
+    className: m,
+    ref: a
+  }, d), s);
+});
+
+exports.MDBListGroup = I;
+I.defaultProps = {
+  tag: "ul"
+};
+
+var z = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.tag,
+      l = t.active,
+      o = t.disabled,
+      i = t.action,
+      s = t.color,
+      d = t.children,
+      m = f(t, ["className", "tag", "active", "disabled", "action", "color", "children"]),
+      p = "button" === n,
+      v = (0, _clsx.default)("list-group-item", l && "active", o && !p && "disabled", i && "list-group-item-action", s && "list-group-item-".concat(s), r);
+  return _react.default.createElement(n, u({
+    className: v,
+    disabled: p && o,
+    ref: a
+  }, m), d);
+});
+
+exports.MDBListGroupItem = z;
+z.defaultProps = {
+  tag: "li"
+};
+
+var F = function (r) {
+  var l = r.className,
+      o = r.children,
+      d = r.disableMouseDown,
+      m = r.tag,
+      p = r.tooltipTag,
+      v = r.options,
+      g = r.placement,
+      h = r.title,
+      b = r.wrapperProps,
+      N = r.wrapperClass,
+      w = r.onMouseEnter,
+      E = r.onMouseLeave,
+      y = f(r, ["className", "children", "disableMouseDown", "tag", "tooltipTag", "options", "placement", "title", "wrapperProps", "wrapperClass", "onMouseEnter", "onMouseLeave"]),
+      k = (0, _react.useState)(null),
+      C = k[0],
+      R = k[1],
+      P = (0, _react.useState)(null),
+      x = P[0],
+      T = P[1],
+      L = (0, _react.useState)(!1),
+      O = L[0],
+      S = L[1],
+      I = (0, _react.useState)(!1),
+      z = I[0],
+      F = I[1],
+      M = (0, _react.useState)(!1),
+      j = M[0],
+      A = M[1],
+      D = (0, _react.useState)(!1),
+      W = D[0],
+      B = D[1],
+      Y = (0, _clsx.default)("tooltip", j && "show", "fade", "bs-tooltip-".concat(g), l),
+      q = (0, _reactPopper.usePopper)(C, x, u({
+    placement: g
+  }, v)),
+      X = q.styles,
+      U = q.attributes;
+  (0, _react.useEffect)(function () {
+    var e, t;
+    return O || z ? (B(!0), e = setTimeout(function () {
+      A(!0);
+    }, 4)) : (A(!1), t = setTimeout(function () {
+      B(!1);
+    }, 300)), function () {
+      clearTimeout(e), clearTimeout(t);
+    };
+  }, [O, z]);
+  var V = (0, _react.useCallback)(function (e) {
+    e.target === C ? F(!0) : F(!1);
+  }, [C]);
+  return (0, _react.useEffect)(function () {
+    if (!d) return document.addEventListener("mousedown", V), function () {
+      document.removeEventListener("mousedown", V);
+    };
+  }, [V, d]), _react.default.createElement(_react.default.Fragment, null, _react.default.createElement(m, u({
+    className: N,
+    onMouseEnter: function (e) {
+      S(!0), w && w(e);
+    },
+    onMouseLeave: function (e) {
+      S(!1), E && E(e);
+    },
+    ref: R
+  }, b), o), W && _reactDom.default.createPortal(_react.default.createElement(p, u({
+    ref: T,
+    className: Y,
+    style: X.popper
+  }, U.popper, {
+    role: "tooltip"
+  }, y), _react.default.createElement("div", {
+    className: "tooltip-inner"
+  }, h)), document.body));
+};
+
+exports.MDBTooltip = F;
+F.defaultProps = {
+  tag: b,
+  tooltipTag: "div",
+  placement: "top"
+};
+
+var M = _react.default.forwardRef(function (t, a) {
+  var r = t.around,
+      n = t.between,
+      l = t.bottom,
+      o = t.center,
+      i = t.children,
+      s = t.className,
+      d = t.evenly,
+      m = t.end,
+      p = t.middle,
+      v = t.start,
+      g = t.tag,
+      h = t.top,
+      b = f(t, ["around", "between", "bottom", "center", "children", "className", "evenly", "end", "middle", "start", "tag", "top"]),
+      N = (0, _clsx.default)("row", r && "justify-content-around", n && "justify-content-between", l && "align-self-end", o && "justify-content-center", d && "justifty-content-evenly", m && "justify-content-end", p && "align-self-center", v && "justify-content-start", h && "align-self-start", s);
+  return _react.default.createElement(g, u({
+    className: N
+  }, b, {
+    ref: a
+  }), i);
+});
+
+exports.MDBRow = M;
+M.defaultProps = {
+  tag: "div"
+};
+
+var j = function (t) {
+  var a = t.className,
+      r = t.icon,
+      n = t.fab,
+      l = t.fas,
+      o = t.fal,
+      i = t.far,
+      s = t.flag,
+      d = t.spin,
+      m = t.fixed,
+      p = t.flip,
+      v = t.list,
+      g = t.size,
+      h = t.pull,
+      b = t.pulse,
+      N = t.color,
+      w = t.border,
+      E = t.rotate,
+      y = t.inverse,
+      k = t.stack,
+      C = t.children,
+      R = f(t, ["className", "icon", "fab", "fas", "fal", "far", "flag", "spin", "fixed", "flip", "list", "size", "pull", "pulse", "color", "border", "rotate", "inverse", "stack", "children"]),
+      P = (0, _clsx.default)(s ? "flag" : n ? "fab" : l ? "fas" : i ? "far" : o ? "fal" : "fa", s ? "flag-".concat(s) : r && "fa-".concat(r), g && "fa-".concat(g), N && "text-".concat(N), w && "fa-border", E && "fa-rotate-".concat(E), h && "fa-pull-".concat(h), d && "fa-spin", v && "fa-li", m && "fa-fw", b && "fa-pulse", y && "fa-inverse", p && "fa-flip-".concat(p), k && "fa-stack-".concat(k), a);
+  return _react.default.createElement("i", u({
+    className: P
+  }, R), C);
+},
+    A = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = t.variant,
+      i = t.colorText,
+      s = t.blockquote,
+      d = t.note,
+      m = t.noteColor,
+      p = t.listUnStyled,
+      v = t.listInLine,
+      g = f(t, ["className", "children", "tag", "variant", "colorText", "blockquote", "note", "noteColor", "listUnStyled", "listInLine"]),
+      h = (0, _clsx.default)(o && o, s && "blockquote", d && "note", i && "text-".concat(i), m && "note-".concat(m), p && "list-unstyled", v && "list-inline", r);
+  return s && (l = "blockquote"), (p || v) && (l = "ul"), _react.default.createElement(l, u({
+    className: h,
+    ref: a
+  }, g), n);
+});
+
+exports.MDBTypography = A;
+exports.MDBIcon = j;
+A.defaultProps = {
+  tag: "p"
+};
+
+var D = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.color,
+      l = t.uppercase,
+      o = t.bold,
+      i = t.children,
+      s = t.tag,
+      d = f(t, ["className", "color", "uppercase", "bold", "children", "tag"]),
+      m = (0, _clsx.default)("breadcrumb", o && "font-weight-bold", n && "text-".concat(n), l && "text-uppercase", r);
+  return _react.default.createElement("nav", {
+    "aria-label": "breadcrumb"
+  }, _react.default.createElement(s, u({
+    className: m,
+    ref: a
+  }, d), i));
+});
+
+exports.MDBBreadcrumb = D;
+D.defaultProps = {
+  tag: "ol"
+};
+
+var W = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.active,
+      l = t.tag,
+      o = t.current,
+      i = t.children,
+      s = f(t, ["className", "active", "tag", "current", "children"]),
+      d = (0, _clsx.default)("breadcrumb-item", n && "active", r);
+  return _react.default.createElement(l, u({
+    className: d,
+    ref: a,
+    "aria-current": n && o
+  }, s), i);
+});
+
+exports.MDBBreadcrumbItem = W;
+W.defaultProps = {
+  tag: "li",
+  current: "page"
+};
+
+var B = _react.default.forwardRef(function (r, l) {
+  var o,
+      i = r.className,
+      s = r.children,
+      d = r.light,
+      m = r.dark,
+      p = r.scrolling,
+      v = r.fixed,
+      g = r.sticky,
+      h = r.scrollingNavbarOffset,
+      b = r.color,
+      N = r.transparent,
+      w = r.expand,
+      E = r.tag,
+      y = r.bgColor,
+      k = f(r, ["className", "children", "light", "dark", "scrolling", "fixed", "sticky", "scrollingNavbarOffset", "color", "transparent", "expand", "tag", "bgColor"]),
+      C = (0, _react.useState)(!1),
+      R = C[0],
+      P = C[1],
+      x = (0, _clsx.default)(((o = {
+    "navbar-light": d,
+    "navbar-dark": m,
+    "scrolling-navbar": p || h,
+    "top-nav-collapse": R
+  })["text-".concat(b)] = b && N ? R : b, o), v && "fixed-".concat(v), g && "sticky-top", "navbar", w && function (e) {
+    if (!1 !== e) return "navbar-expand-".concat(e);
+  }(w), y && "bg-".concat(y), i),
+      T = (0, _react.useCallback)(function () {
+    window.pageYOffset > h ? P(!0) : P(!1);
+  }, [h]);
+  return (0, _react.useEffect)(function () {
+    return (p || h) && window.addEventListener("scroll", T), function () {
+      window.removeEventListener("scroll", T);
+    };
+  }, [T, p, h]), _react.default.createElement(E, u({
+    className: x,
+    role: "navigation"
+  }, k, {
+    ref: l
+  }), s);
+});
+
+exports.MDBNavbar = B;
+B.defaultProps = {
+  tag: "nav"
+};
+
+var Y = _react.default.forwardRef(function (t, a) {
+  var r = t.children,
+      n = t.className,
+      l = t.disabled,
+      o = t.active,
+      i = t.tag,
+      s = f(t, ["children", "className", "disabled", "active", "tag"]),
+      d = (0, _clsx.default)("nav-link", l ? "disabled" : o ? "active" : "", n);
+  return _react.default.createElement(i, u({
+    "data-test": "nav-link",
+    className: d,
+    ref: a
+  }, s), r);
+});
+
+exports.MDBNavbarLink = Y;
+Y.defaultProps = {
+  tag: "a",
+  active: !1,
+  className: "",
+  disabled: !1
+};
+
+var q = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = f(t, ["className", "children", "tag"]),
+      i = (0, _clsx.default)("navbar-brand", r);
+  return _react.default.createElement(l, u({
+    className: i,
+    ref: a
+  }, o), n);
+});
+
+exports.MDBNavbarBrand = q;
+q.defaultProps = {
+  tag: "a"
+};
+
+var X = _react.default.forwardRef(function (t, a) {
+  var r = t.children,
+      n = t.className,
+      l = t.active,
+      o = t.text,
+      i = t.tag,
+      s = f(t, ["children", "className", "active", "text", "tag"]),
+      d = (0, _clsx.default)("nav-item", l && "active", o && "navbar-text", n);
+  return _react.default.createElement(i, u({}, s, {
+    className: d,
+    ref: a
+  }), r);
+});
+
+exports.MDBNavbarItem = X;
+X.defaultProps = {
+  tag: "li"
+};
+
+var U = _react.default.forwardRef(function (t, a) {
+  var r = t.children,
+      n = t.className,
+      l = t.right,
+      o = t.fullWidth,
+      i = t.left,
+      s = t.tag,
+      d = f(t, ["children", "className", "right", "fullWidth", "left", "tag"]),
+      m = (0, _clsx.default)("navbar-nav", o && "w-100", l && "ms-auto", i && "me-auto", n);
+  return _react.default.createElement(s, u({
+    className: m,
+    ref: a
+  }, d), r);
+});
+
+exports.MDBNavbarNav = U;
+U.defaultProps = {
+  tag: "ul",
+  fullWidth: !0
+};
+
+var V = _react.default.forwardRef(function (t, a) {
+  var r = t.children,
+      n = t.className,
+      l = t.tag,
+      o = f(t, ["children", "className", "tag"]),
+      i = (0, _clsx.default)("navbar-toggler", n);
+  return _react.default.createElement(l, u({}, o, {
+    className: i,
+    ref: a
+  }), r);
+});
+
+exports.MDBNavbarToggler = V;
+V.defaultProps = {
+  tag: "button"
+};
+
+var H = _react.default.forwardRef(function (t, a) {
+  var r = t.children,
+      n = t.bgColor,
+      l = t.color,
+      o = t.tag,
+      i = t.className,
+      s = f(t, ["children", "bgColor", "color", "tag", "className"]),
+      d = (0, _clsx.default)(n && "bg-".concat(n), l && "text-".concat(l), i);
+  return _react.default.createElement(o, u({
+    className: d
+  }, s, {
+    ref: a
+  }), r);
+});
+
+exports.MDBFooter = H;
+H.defaultProps = {
+  tag: "footer"
+};
+
+var G = _react.default.forwardRef(function (t, a) {
+  var r = t.children,
+      n = t.size,
+      l = t.circle,
+      o = t.tag,
+      i = t.center,
+      s = t.end,
+      d = t.start,
+      m = t.className,
+      p = f(t, ["children", "size", "circle", "tag", "center", "end", "start", "className"]),
+      v = (0, _clsx.default)("pagination", i && "justify-content-center", l && "pagination-circle", s && "justify-content-end", n && "pagination-".concat(n), d && "justify-content-start", m);
+  return _react.default.createElement(o, u({
+    className: v
+  }, p, {
+    ref: a
+  }), r);
+});
+
+exports.MDBPagination = G;
+G.defaultProps = {
+  tag: "ul"
+};
+
+var J = _react.default.forwardRef(function (t, a) {
+  var r = t.children,
+      n = t.tag,
+      l = t.className,
+      o = f(t, ["children", "tag", "className"]),
+      i = (0, _clsx.default)("page-link", l);
+  return _react.default.createElement(n, u({
+    className: i
+  }, o, {
+    ref: a
+  }), r);
+});
+
+exports.MDBPaginationLink = J;
+J.defaultProps = {
+  tag: "a"
+};
+
+var K = _react.default.forwardRef(function (t, a) {
+  var r = t.children,
+      n = t.tag,
+      l = t.className,
+      o = t.active,
+      i = t.disabled,
+      s = f(t, ["children", "tag", "className", "active", "disabled"]),
+      d = (0, _clsx.default)("page-item", o && "active", i && "disabled", l);
+  return _react.default.createElement(n, u({
+    className: d
+  }, s, {
+    ref: a
+  }), r);
+});
+
+exports.MDBPaginationItem = K;
+K.defaultProps = {
+  tag: "li"
+};
+
+var Q = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.classNameResponsive,
+      o = t.tag,
+      i = t.responsive,
+      s = t.align,
+      d = t.borderColor,
+      m = t.bordered,
+      p = t.borderless,
+      v = t.children,
+      g = t.color,
+      h = t.hover,
+      b = t.small,
+      N = t.striped,
+      w = f(t, ["className", "classNameResponsive", "tag", "responsive", "align", "borderColor", "bordered", "borderless", "children", "color", "hover", "small", "striped"]),
+      E = (0, _clsx.default)("table", s && "align-".concat(s), d && "border-".concat(d), m && "table-bordered", p && "table-borderless", g && "table-".concat(g), h && "table-hover", b && "table-sm", N && "table-striped", r),
+      y = (0, _react.useMemo)(function () {
+    return _react.default.createElement(o, u({
+      className: E,
+      ref: a
+    }, w), v);
+  }, [o, v, E, w, a]);
+
+  if (i) {
+    var k = (0, _clsx.default)("string" == typeof i ? "table-responsive-".concat(i) : "table-responsive", n);
+    return _react.default.createElement("div", {
+      className: k
+    }, y);
+  }
+
+  return y;
+});
+
+exports.MDBTable = Q;
+Q.defaultProps = {
+  tag: "table"
+};
+
+var Z = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.tag,
+      l = t.children,
+      o = t.dark,
+      i = t.light,
+      s = f(t, ["className", "tag", "children", "dark", "light"]),
+      d = (0, _clsx.default)(o && "table-dark", i && "table-light", r);
+  return _react.default.createElement(n, u({
+    className: d,
+    ref: a
+  }, s), l);
+});
+
+exports.MDBTableHead = Z;
+Z.defaultProps = {
+  tag: "thead"
+};
+
+var $ = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.tag,
+      l = t.children,
+      o = f(t, ["className", "tag", "children"]),
+      i = (0, _clsx.default)(r);
+  return _react.default.createElement(n, u({
+    className: i,
+    ref: a
+  }, o), l);
+});
+
+exports.MDBTableBody = $;
+$.defaultProps = {
+  tag: "tbody"
+};
+
+var _ = _react.default.forwardRef(function (t, a) {
+  var r,
+      n = t.animated,
+      l = t.children,
+      o = t.className,
+      i = t.style,
+      s = t.tag,
+      d = t.valuenow,
+      m = t.valuemax,
+      p = t.striped,
+      v = t.bgColor,
+      g = t.valuemin,
+      h = t.width,
+      b = f(t, ["animated", "children", "className", "style", "tag", "valuenow", "valuemax", "striped", "bgColor", "valuemin", "width"]),
+      N = (0, _clsx.default)("progress-bar", v && "bg-".concat(v), p && "progress-bar-striped", n && "progress-bar-animated", o),
+      w = u({
+    width: "".concat(h, "%")
+  }, i);
+  return _react.default.createElement(s, u({
+    className: N,
+    style: w,
+    ref: a,
+    role: "progressbar"
+  }, b, {
+    "aria-valuenow": null !== (r = Number(h)) && void 0 !== r ? r : d,
+    "aria-valuemin": Number(g),
+    "aria-valuemax": Number(m)
+  }), l);
+});
+
+exports.MDBProgressBar = _;
+_.defaultProps = {
+  tag: "div"
+};
+
+var ee = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = t.height,
+      i = t.style,
+      s = f(t, ["className", "children", "tag", "height", "style"]),
+      d = (0, _clsx.default)("progress", r),
+      m = u({
+    height: "".concat(o, "px")
+  }, i);
+  return _react.default.createElement(l, u({
+    className: d,
+    ref: a,
+    style: m
+  }, s), _react.default.Children.map(n, function (t) {
+    return _react.default.isValidElement(t) && t.type === _ ? t : void console.error("Progress component only allows ProgressBar as child");
+  }));
+});
+
+exports.MDBProgress = ee;
+ee.defaultProps = {
+  tag: "div"
+};
+
+var te = function (l) {
+  var o,
+      i = l.className,
+      s = l.size,
+      d = l.contrast,
+      m = l.value,
+      p = l.defaultValue,
+      v = l.id,
+      g = l.labelId,
+      h = l.labelClass,
+      b = l.wrapperClass,
+      N = l.wrapperStyle,
+      w = l.wrapperTag,
+      E = l.label,
+      y = l.onChange,
+      k = l.children,
+      C = l.labelRef,
+      R = l.labelStyle,
+      P = l.inputRef,
+      x = l.textarea,
+      T = l.validation,
+      L = l.invalid,
+      O = l.validationTooltip,
+      S = l.btnClasses,
+      I = l.btnOnClick,
+      z = l.btnRef,
+      F = l.type,
+      M = l.onBlur,
+      j = l.readonly,
+      A = l.btn,
+      D = l.btnType,
+      W = f(l, ["className", "size", "contrast", "value", "defaultValue", "id", "labelId", "labelClass", "wrapperClass", "wrapperStyle", "wrapperTag", "label", "onChange", "children", "labelRef", "labelStyle", "inputRef", "textarea", "validation", "invalid", "validationTooltip", "btnClasses", "btnOnClick", "btnRef", "type", "onBlur", "readonly", "btn", "btnType"]),
+      B = (0, _react.useRef)(null),
+      Y = (0, _react.useRef)(null),
+      q = (0, _react.useRef)(null),
+      X = (0, _react.useRef)(null),
+      U = C || B,
+      V = z || Y,
+      H = P || (x ? X : q),
+      G = (0, _react.useState)(m || p),
+      J = G[0],
+      K = G[1],
+      Q = (0, _react.useState)(0),
+      Z = Q[0],
+      $ = Q[1],
+      _ = (0, _react.useState)(void 0 !== m && m.length > 0 || (void 0 !== p && p.length) > 0),
+      ee = _[0],
+      te = _[1],
+      ae = (0, _clsx.default)("form-outline", d && "form-white", b),
+      re = (0, _clsx.default)("form-control", ee && "active", "date" === F && "active", s && "form-control-".concat(s), i),
+      ne = (0, _clsx.default)("form-label", h),
+      le = (0, _clsx.default)(T && (L ? "invalid-".concat(O ? "tooltip" : "feedback") : "valid-".concat(O ? "tooltip" : "feedback")));
+
+  (0, _react.useEffect)(function () {
+    var e;
+    U.current && 0 !== (null === (e = U.current) || void 0 === e ? void 0 : e.clientWidth) && $(.8 * U.current.clientWidth + 8);
+  }, [U, null === (o = U.current) || void 0 === o ? void 0 : o.clientWidth]);
+
+  var oe = function () {
+    U.current && $(.8 * U.current.clientWidth + 8);
+  };
+
+  (0, _react.useEffect)(function () {
+    void 0 !== m && (m.length > 0 ? te(!0) : te(!1));
+  }, [m]), (0, _react.useEffect)(function () {
+    void 0 !== p && (p.length > 0 ? te(!0) : te(!1));
+  }, [p]);
+
+  var ce = function (e) {
+    K(e.currentTarget.value), y && y(e);
+  },
+      ie = (0, _react.useCallback)(function (e) {
+    void 0 !== J && J.length > 0 || void 0 !== m && m.length > 0 ? te(!0) : te(!1), M && M(e);
+  }, [J, m, M]);
+
+  return _react.default.createElement(w, {
+    className: ae,
+    style: u({}, N)
+  }, x ? _react.default.createElement("textarea", u({
+    readOnly: j,
+    className: re,
+    onBlur: ie,
+    onChange: ce,
+    onFocus: oe,
+    defaultValue: p,
+    value: m,
+    id: v,
+    ref: H
+  }, W)) : _react.default.createElement("input", u({
+    type: F,
+    readOnly: j,
+    className: re,
+    onBlur: ie,
+    onChange: ce,
+    onFocus: oe,
+    value: m,
+    defaultValue: p,
+    id: v,
+    ref: H
+  }, W)), E && _react.default.createElement("label", {
+    className: ne,
+    style: R,
+    id: g,
+    htmlFor: v,
+    ref: U
+  }, E), T && _react.default.createElement("div", {
+    className: le
+  }, T), _react.default.createElement("div", {
+    className: "form-notch"
+  }, _react.default.createElement("div", {
+    className: "form-notch-leading"
+  }), _react.default.createElement("div", {
+    className: "form-notch-middle",
+    style: {
+      width: Z
+    }
+  }), _react.default.createElement("div", {
+    className: "form-notch-trailing"
+  })), A && _react.default.createElement("button", {
+    ref: V,
+    type: D,
+    className: S,
+    onClick: I
+  }, A), k);
+};
+
+exports.MDBInput = te;
+te.defaultProps = {
+  wrapperTag: "div",
+  btnType: "button",
+  readonly: !1
+};
+
+var ae = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.tag,
+      l = t.labelId,
+      o = t.labelClass,
+      i = t.wrapperClass,
+      s = t.wrapperTag,
+      d = t.label,
+      m = t.inline,
+      p = t.btn,
+      v = t.id,
+      g = t.defaultChecked,
+      h = t.checked,
+      b = t.validation,
+      N = t.invalid,
+      w = t.btnColor,
+      E = t.disableWrapper,
+      y = t.toggleSwitch,
+      k = f(t, ["className", "tag", "labelId", "labelClass", "wrapperClass", "wrapperTag", "label", "inline", "btn", "id", "defaultChecked", "checked", "validation", "invalid", "btnColor", "disableWrapper", "toggleSwitch"]),
+      C = "form-check-input",
+      R = "form-check-label";
+  p && (C = "btn-check", R = w ? "btn btn-".concat(w) : "btn btn-primary");
+  var P = (0, _clsx.default)(d && !p && "form-check", m && !p && "form-check-inline", y && "form-switch", i),
+      x = (0, _clsx.default)(C, r),
+      T = (0, _clsx.default)(R, o),
+      L = (0, _clsx.default)(b && (N ? "invalid-feedback" : "valid-feedback"));
+  return _react.default.createElement(_react.default.Fragment, null, E ? _react.default.createElement(_react.default.Fragment, null, _react.default.createElement(n, u({
+    className: x,
+    type: "checkbox",
+    defaultChecked: g,
+    checked: h,
+    id: v,
+    ref: a
+  }, k)), d && _react.default.createElement("label", {
+    className: T,
+    id: l,
+    htmlFor: v
+  }, d), b && _react.default.createElement("div", {
+    className: L
+  }, b)) : _react.default.createElement(s, {
+    className: P
+  }, _react.default.createElement(n, u({
+    className: x,
+    type: "checkbox",
+    defaultChecked: g,
+    checked: h,
+    id: v,
+    ref: a
+  }, k)), d && _react.default.createElement("label", {
+    className: T,
+    id: l,
+    htmlFor: v
+  }, d), b && _react.default.createElement("div", {
+    className: L
+  }, b)));
+});
+
+exports.MDBCheckbox = ae;
+ae.defaultProps = {
+  tag: "input",
+  wrapperTag: "div"
+};
+
+var re = _react.default.forwardRef(function (t, a) {
+  var r = f(t, []);
+  return _react.default.createElement(ae, u({
+    type: "radio",
+    ref: a
+  }, r));
+}),
+    ne = function (l) {
+  var o = l.className,
+      i = l.center,
+      s = l.children,
+      d = l.show,
+      m = l.id,
+      p = l.navbar,
+      v = l.tag,
+      g = l.collapseRef,
+      h = l.style,
+      b = f(l, ["className", "center", "children", "show", "id", "navbar", "tag", "collapseRef", "style"]),
+      N = (0, _react.useState)(!1),
+      w = N[0],
+      E = N[1],
+      y = (0, _react.useState)(""),
+      k = y[0],
+      C = y[1],
+      R = (0, _react.useState)(!1),
+      P = R[0],
+      x = R[1],
+      T = (0, _react.useState)(void 0),
+      L = T[0],
+      O = T[1],
+      S = (0, _clsx.default)("collapsing", "collapse", (w || P) && "show", p && "navbar-collapse", i && "justify-content-center", o),
+      I = (0, _react.useRef)(null),
+      z = g || I,
+      F = (0, _react.useCallback)(function () {
+    (w || P) && O(void 0);
+  }, [w, P]);
+  return (0, _react.useEffect)(function () {
+    var e;
+    void 0 === L && (w || P) && O(null === (e = null == z ? void 0 : z.current) || void 0 === e ? void 0 : e.scrollHeight);
+  }, [L, w, P, z]), (0, _react.useEffect)(function () {
+    "string" == typeof d ? (C(d), x(k === m)) : E(d);
+  }, [d, w, m, k, P]), (0, _react.useEffect)(function () {
+    var e;
+    O(w || P ? null === (e = null == z ? void 0 : z.current) || void 0 === e ? void 0 : e.scrollHeight : 0);
+  }, [w, P, z]), (0, _react.useEffect)(function () {
+    return window.addEventListener("resize", F), function () {
+      window.removeEventListener("resize", F);
+    };
+  }, [F]), _react.default.createElement(v, u({
+    style: u({
+      height: L
+    }, h),
+    id: m,
+    className: S
+  }, b, {
+    ref: z
+  }), s);
+};
+
+exports.MDBCollapse = ne;
+exports.MDBRadio = re;
+ne.defaultProps = {
+  tag: "div"
+};
+
+var le = _react.default.createContext({
+  animation: !0,
+  handleOpenClose: function () {},
+  handleClose: function () {},
+  getCount: function () {
+    return 0;
+  },
+  isOpenState: !1,
+  activeIndex: 0,
+  animatedFadeIn: !1,
+  animatedFadeOut: !1,
+  setPopperElement: null,
+  setReferenceElement: null,
+  styles: {},
+  attributes: {}
+}),
+    oe = function (r) {
+  var l = r.className,
+      o = r.tag,
+      i = r.group,
+      m = r.isOpen,
+      p = r.children,
+      v = r.dropup,
+      g = r.dropright,
+      h = r.dropleft,
+      b = r.options,
+      N = r.animation,
+      w = r.placement,
+      E = f(r, ["className", "tag", "group", "isOpen", "children", "dropup", "dropright", "dropleft", "options", "animation", "placement"]),
+      y = (0, _react.useState)(m),
+      k = y[0],
+      C = y[1],
+      R = (0, _react.useState)(!1),
+      P = R[0],
+      x = R[1],
+      T = (0, _react.useState)(!1),
+      L = T[0],
+      O = T[1],
+      S = (0, _react.useState)(),
+      I = S[0],
+      z = S[1],
+      F = (0, _react.useState)(),
+      M = F[0],
+      j = F[1],
+      A = (0, _react.useState)(w),
+      D = A[0],
+      W = A[1],
+      B = (0, _react.useState)(-1),
+      Y = B[0],
+      q = B[1],
+      X = (0, _react.useState)(-1),
+      U = X[0],
+      V = X[1];
+  (0, _react.useEffect)(function () {
+    W(v ? "top-start" : g ? "right-start" : h ? "left-start" : "bottom-start");
+  }, [h, g, v]);
+  var H = (0, _reactPopper.usePopper)(I, M, u({
+    placement: D,
+    modifiers: [_core.flip]
+  }, b)),
+      G = H.styles,
+      J = H.attributes,
+      K = (0, _clsx.default)(i ? "btn-group" : "dropdown", v && "dropup", g && "dropend", h && "dropstart", l),
+      Q = (0, _react.useCallback)(function (e) {
+    M && null !== M && k && I && null !== I && (M.contains(e.target) || I.contains(e.target) || C(!1));
+  }, [k, M, I]);
+  return (0, _react.useEffect)(function () {
+    return document.addEventListener("mousedown", Q), function () {
+      document.removeEventListener("mousedown", Q);
+    };
+  }, [Q]), (0, _react.useEffect)(function () {
+    k && q(U);
+  }, [U, k]), (0, _react.useEffect)(function () {
+    var e, t;
+    return k ? (x(!0), e = setTimeout(function () {
+      x(!1);
+    }, 300)) : (O(!0), t = setTimeout(function () {
+      O(!1);
+    }, 300)), function () {
+      clearTimeout(e), clearTimeout(t);
+    };
+  }, [k]), _react.default.createElement(le.Provider, {
+    value: {
+      animation: N,
+      activeIndex: Y,
+      handleClose: function () {
+        return C(!1);
+      },
+      handleOpenClose: function () {
+        return C(!k);
+      },
+      isOpenState: k,
+      setReferenceElement: z,
+      setPopperElement: j,
+      styles: G,
+      attributes: J,
+      animatedFadeIn: P,
+      animatedFadeOut: L,
+      getCount: function (e) {
+        return function (e) {
+          return V(e);
+        }(e);
+      }
+    }
+  }, _react.default.createElement(o, u({
+    className: K
+  }, E), p));
+};
+
+exports.MDBDropdown = oe;
+
+function ce(e, t) {
+  void 0 === t && (t = {});
+  var a = t.insertAt;
+
+  if (e && "undefined" != typeof document) {
+    var r = document.head || document.getElementsByTagName("head")[0],
+        n = document.createElement("style");
+    n.type = "text/css", "top" === a && r.firstChild ? r.insertBefore(n, r.firstChild) : r.appendChild(n), n.styleSheet ? n.styleSheet.cssText = e : n.appendChild(document.createTextNode(e));
+  }
+}
+
+oe.defaultProps = {
+  tag: "div",
+  animation: !0
+};
+ce(".dropdown-menu li[data-active='true'] {\n  color: #16181b;\n  background-color: #eee;\n}\n");
+
+var ie = function (t) {
+  var a = t.onClick,
+      r = t.tag,
+      n = t.children,
+      l = t.style,
+      c = f(t, ["onClick", "tag", "children", "style"]),
+      i = (0, _react.useContext)(le),
+      s = i.activeIndex,
+      d = i.handleClose;
+  return _react.default.createElement(r, u({}, c, {
+    style: u(u({}, l), {
+      cursor: "pointer"
+    }),
+    onClick: function (e) {
+      d(), a && a(e);
+    }
+  }), _react.default.Children.map(n, function (t, a) {
+    return _react.default.cloneElement(t, {
+      "data-active": s === a,
+      "data-index": a
+    });
+  }));
+};
+
+exports.MDBDropdownItem = ie;
+ie.defaultProps = {
+  tag: "li"
+};
+ce(".dropdown-menu [data-active='true'] a.dropdown-item,\n.dropdown-menu .dropdown-item:focus,\n.dropdown-menu li:focus .dropdown-item {\n  color: #16181b;\n  background-color: #eee;\n}\n\n.dropdown-menu li:focus {\n  outline: none;\n}\n\n.dropdown-menu.dropdown-menu-dark [data-active='true'] a.dropdown-item,\n.dropdown-menu.dropdown-menu-dark .dropdown-item:focus,\n.dropdown-menu.dropdown-menu-dark li:focus .dropdown-item {\n  color: #fff;\n  background-color: #1266f1;\n}\n\n.btn-group.dropstart > .dropdown-menu {\n  right: 0 !important;\n}\n");
+
+var se = function (r) {
+  var l = r.className,
+      s = r.tag,
+      d = r.children,
+      m = r.style,
+      p = r.dark,
+      v = r.responsive,
+      g = f(r, ["className", "tag", "children", "style", "dark", "responsive"]),
+      h = (0, _react.useContext)(le),
+      b = h.activeIndex,
+      N = h.setPopperElement,
+      w = h.isOpenState,
+      E = h.styles,
+      y = h.attributes,
+      k = h.animatedFadeIn,
+      C = h.animatedFadeOut,
+      R = h.animation,
+      P = h.getCount,
+      x = h.handleOpenClose,
+      T = (0, _clsx.default)("dropdown-menu", p && "dropdown-menu-dark", w && "show", R && "animation", k && "fade-in", C && "fade-out", v && "dropdown-menu-".concat(v), l),
+      L = (0, _react.useState)(!1),
+      O = L[0],
+      S = L[1],
+      I = (0, _react.useState)(0),
+      z = I[0],
+      F = I[1],
+      M = (0, _react.useState)(-1),
+      j = M[0],
+      A = M[1];
+  (0, _react.useEffect)(function () {
+    var t;
+
+    if (w) {
+      var a = _react.default.Children.count(d);
+
+      A(a), S(!0);
+    } else t = setTimeout(function () {
+      S(!1);
+    }, 300);
+
+    return function () {
+      clearTimeout(t);
+    };
+  }, [d, w]);
+  var D = (0, _react.useCallback)(function (e) {
+    e.preventDefault(), O && ("ArrowUp" === e.key && (F(z - 1), z <= 0 && F(j - 1)), "ArrowDown" === e.key && (F(z + 1), z === j - 1 && F(0)), "Escape" !== e.key && "Enter" !== e.key || (S(!1), x()));
+  }, [O, j, x, z]);
+  return (0, _react.useEffect)(function () {
+    O && P(z);
+  }, [z, O, P]), (0, _react.useEffect)(function () {
+    return O && document.addEventListener("keydown", D), function () {
+      document.removeEventListener("keydown", D);
+    };
+  }, [O, D]), O ? _react.default.createElement(_react.default.Fragment, null, _reactDom.default.createPortal(_react.default.createElement(s, u({
+    className: T,
+    style: u(u({
+      position: "absolute",
+      zIndex: 1e3
+    }, E.popper), m)
+  }, g, y.popper, {
+    ref: N,
+    tabIndex: -1
+  }), _react.default.Children.map(d, function (t, a) {
+    return (null == t ? void 0 : t.type) === ie ? _react.default.cloneElement(t, {
+      tabIndex: 0,
+      "data-active": b === a && !0,
+      "data-index": a,
+      className: b === a ? "active" : ""
+    }) : t;
+  })), document.body)) : "";
+};
+
+exports.MDBDropdownMenu = se;
+se.defaultProps = {
+  tag: "ul",
+  responsive: ""
+};
+
+var de = function (t) {
+  var a = t.className,
+      r = t.tag,
+      n = t.children,
+      l = t.onClick,
+      i = t.split,
+      s = f(t, ["className", "tag", "children", "onClick", "split"]),
+      d = (0, _clsx.default)("dropdown-toggle", i && "dropdown-toggle-split", a),
+      m = (0, _react.useContext)(le),
+      p = m.handleOpenClose,
+      v = m.setReferenceElement,
+      g = m.isOpenState;
+  return _react.default.createElement(r, u({
+    onClick: function (e) {
+      p(), l && l(e);
+    },
+    ref: v,
+    className: d
+  }, s, {
+    "aria-expanded": !!g
+  }), n);
+};
+
+exports.MDBDropdownToggle = de;
+de.defaultProps = {
+  tag: b
+};
+
+var ue = function (t) {
+  var a = t.onClick,
+      r = t.className,
+      n = t.tag,
+      l = t.children,
+      i = f(t, ["onClick", "className", "tag", "children"]),
+      s = (0, _clsx.default)("dropdown-item", r),
+      d = (0, _react.useContext)(le).handleClose;
+  return _react.default.createElement(n, u({
+    className: s
+  }, i, {
+    onClick: function (e) {
+      d(), a && a(e);
+    }
+  }), l);
+};
+
+exports.MDBDropdownLink = ue;
+ue.defaultProps = {
+  tag: "a"
+};
+
+var fe = function (t) {
+  var a = t.tag,
+      r = f(t, ["tag"]);
+  return _react.default.createElement(a, u({}, r, {
+    className: "dropdown-divider"
+  }));
+};
+
+exports.MDBDropdownDivider = fe;
+fe.defaultProps = {
+  tag: "div"
+};
+
+var me = function (t) {
+  var a = t.tag,
+      r = t.children,
+      n = t.className,
+      l = f(t, ["tag", "children", "className"]);
+  return _react.default.createElement(a, u({}, l, {
+    className: (0, _clsx.default)("dropdown-header", n)
+  }), r);
+};
+
+exports.MDBDropdownHeader = me;
+me.defaultProps = {
+  tag: "h6"
+};
+
+var pe = function (r) {
+  var o = r.className,
+      d = r.btnClassName,
+      m = r.btnChildren,
+      p = r.children,
+      v = r.tag,
+      g = r.popperTag,
+      h = r.isOpen,
+      b = r.placement,
+      N = r.dismiss,
+      w = r.options,
+      E = r.poperStyle,
+      y = r.onClick,
+      k = f(r, ["className", "btnClassName", "btnChildren", "children", "tag", "popperTag", "isOpen", "placement", "dismiss", "options", "poperStyle", "onClick"]),
+      C = (0, _react.useState)(),
+      R = C[0],
+      P = C[1],
+      x = (0, _react.useState)(),
+      T = x[0],
+      L = x[1],
+      O = (0, _reactPopper.usePopper)(R, T, u({
+    placement: b
+  }, w)),
+      S = O.styles,
+      I = O.attributes,
+      z = (0, _react.useState)(h),
+      F = z[0],
+      M = z[1],
+      j = (0, _react.useState)(!1),
+      A = j[0],
+      D = j[1],
+      W = (0, _react.useState)(!1),
+      B = W[0],
+      Y = W[1],
+      q = (0, _react.useState)(!1),
+      X = q[0],
+      U = q[1],
+      V = (0, _clsx.default)("popover fade", B && "show", "bs-popover-".concat("left" === b ? "start" : "right" === b ? "end" : b), o);
+  (0, _react.useEffect)(function () {
+    h || M(!1);
+  }, [h]);
+  var H = (0, _react.useCallback)(function (e) {
+    X && T && null !== T && F && R && null !== R && (R.contains(e.target) || M(!1));
+  }, [X, F, T, R]);
+  return (0, _react.useMemo)(function () {
+    var e;
+    return F ? (D(!0), setTimeout(function () {
+      Y(!0);
+    }, 150)) : (e = setTimeout(function () {
+      D(!1);
+    }, 150), Y(!1)), function () {
+      clearTimeout(e);
+    };
+  }, [F]), (0, _react.useEffect)(function () {
+    return F && document.addEventListener("mousedown", H), function () {
+      document.removeEventListener("mousedown", H);
+    };
+  }, [H, F]), _react.default.createElement(_react.default.Fragment, null, _react.default.createElement(v, u({
+    onClick: function (e) {
+      N ? (U(!0), M(!0)) : M(!F), y && y(e);
+    },
+    className: d
+  }, k, {
+    ref: P
+  }), m), A && _reactDom.default.createPortal(_react.default.createElement(g, u({
+    className: V,
+    ref: L,
+    style: u(u({}, S.popper), E)
+  }, I.popper, {
+    "data-testid": "popoverTestID"
+  }), p), document.body));
+};
+
+exports.MDBPopover = pe;
+pe.defaultProps = {
+  tag: b,
+  popperTag: "div",
+  placement: "bottom"
+};
+
+var ve = function (t) {
+  var a = t.className,
+      r = t.children,
+      n = t.tag,
+      l = f(t, ["className", "children", "tag"]),
+      o = (0, _clsx.default)("popover-body", a);
+  return _react.default.createElement(n, u({
+    className: o
+  }, l), r);
+};
+
+exports.MDBPopoverBody = ve;
+ve.defaultProps = {
+  tag: "div"
+};
+
+var ge = function (t) {
+  var a = t.className,
+      r = t.children,
+      n = t.tag,
+      l = f(t, ["className", "children", "tag"]),
+      o = (0, _clsx.default)("popover-header", a);
+  return _react.default.createElement(n, u({
+    className: o
+  }, l), r);
+};
+
+exports.MDBPopoverHeader = ge;
+ge.defaultProps = {
+  tag: "h3"
+};
+
+var he = function (l) {
+  var o = l.animationDirection,
+      s = l.appendToBody,
+      d = l.backdrop,
+      m = l.children,
+      p = l.className,
+      v = l.closeOnEsc,
+      g = l.setShow,
+      h = l.leaveHiddenModal,
+      b = l.modalRef,
+      N = l.show,
+      w = l.staticBackdrop,
+      E = l.tag,
+      y = f(l, ["animationDirection", "appendToBody", "backdrop", "children", "className", "closeOnEsc", "setShow", "leaveHiddenModal", "modalRef", "show", "staticBackdrop", "tag"]),
+      k = (0, _react.useState)(N),
+      C = k[0],
+      R = k[1],
+      P = (0, _react.useState)(N),
+      x = P[0],
+      T = P[1],
+      L = (0, _react.useState)(N),
+      O = L[0],
+      S = L[1],
+      I = (0, _react.useState)(!1),
+      z = I[0],
+      F = I[1],
+      M = (0, _react.useRef)(null),
+      j = b || M,
+      A = (0, _clsx.default)("modal", z && "modal-static", o, "fade", x && "show", p),
+      D = (0, _clsx.default)("modal-backdrop", "fade", C && "show"),
+      W = (0, _react.useCallback)(function () {
+    T(!1), setTimeout(function () {
+      R(!1), g && g(!1);
+    }, 150), setTimeout(function () {
+      S(!1);
+    }, 350);
+  }, [g]),
+      B = (0, _react.useCallback)(function (e) {
+    x && e.target === j.current && (w ? (F(!0), setTimeout(function () {
+      F(!1);
+    }, 300)) : W());
+  }, [W, j, x, w]),
+      Y = (0, _react.useCallback)(function (e) {
+    v && x && "Escape" === e.key && (w ? (F(!0), setTimeout(function () {
+      F(!1);
+    }, 300)) : W());
+  }, [W, x, w, v]);
+  (0, _react.useEffect)(function () {
+    var e,
+        t = window.innerWidth > document.documentElement.clientWidth && window.innerWidth >= 576;
+
+    if (O && t) {
+      var a = (e = document.documentElement.clientWidth, Math.abs(window.innerWidth - e));
+      document.body.classList.add("modal-open"), document.body.style.overflow = "hidden", document.body.style.paddingRight = "".concat(a, "px");
+    } else document.body.classList.remove("modal-open"), document.body.style.overflow = "", document.body.style.paddingRight = "";
+  }, [O]), (0, _react.useEffect)(function () {
+    N ? (S(!0), setTimeout(function () {
+      R(!0);
+    }, 0), setTimeout(function () {
+      T(!0), g && g(!0);
+    }, 150)) : W();
+  }, [N, W, g]), (0, _react.useEffect)(function () {
+    return window.addEventListener("click", B), window.addEventListener("keydown", Y), function () {
+      window.removeEventListener("click", B), window.removeEventListener("keydown", Y);
+    };
+  }, [Y, B]);
+
+  var q = _react.default.createElement(_react.default.Fragment, null, (h || N || O) && _reactDom.default.createPortal(_react.default.createElement(_react.default.Fragment, null, _react.default.createElement(E, u({
+    className: A,
+    ref: j,
+    style: {
+      display: O || N ? "block" : "none"
+    }
+  }, y), m), _reactDom.default.createPortal(d && O && _react.default.createElement("div", {
+    className: D
+  }), document.body)), document.body)),
+      X = _react.default.createElement(_react.default.Fragment, null, (h || N || O) && _react.default.createElement(_react.default.Fragment, null, _react.default.createElement(E, u({
+    className: A,
+    ref: j,
+    style: {
+      display: O || N ? "block" : "none"
+    }
+  }, y), m), _reactDom.default.createPortal(d && O && _react.default.createElement("div", {
+    className: D
+  }), document.body)));
+
+  return _react.default.createElement(_react.default.Fragment, null, s ? q : X);
+};
+
+exports.MDBModal = he;
+he.defaultProps = {
+  tag: "div",
+  backdrop: !0,
+  closeOnEsc: !0,
+  leaveHiddenModal: !0
+};
+
+var be = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.centered,
+      l = t.children,
+      o = t.size,
+      i = t.scrollable,
+      s = t.tag,
+      d = f(t, ["className", "centered", "children", "size", "scrollable", "tag"]),
+      m = (0, _clsx.default)("modal-dialog", i && "modal-dialog-scrollable", n && "modal-dialog-centered", o && "modal-".concat(o), r);
+  return _react.default.createElement(s, u({
+    className: m
+  }, d, {
+    ref: a
+  }), l);
+});
+
+exports.MDBModalDialog = be;
+be.defaultProps = {
+  tag: "div"
+};
+
+var Ne = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = f(t, ["className", "children", "tag"]),
+      i = (0, _clsx.default)("modal-content", r);
+  return _react.default.createElement(l, u({
+    className: i
+  }, o, {
+    ref: a
+  }), n);
+});
+
+exports.MDBModalContent = Ne;
+Ne.defaultProps = {
+  tag: "div"
+};
+
+var we = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = f(t, ["className", "children", "tag"]),
+      i = (0, _clsx.default)("modal-header", r);
+  return _react.default.createElement(l, u({
+    className: i
+  }, o, {
+    ref: a
+  }), n);
+});
+
+exports.MDBModalHeader = we;
+we.defaultProps = {
+  tag: "div"
+};
+
+var Ee = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = f(t, ["className", "children", "tag"]),
+      i = (0, _clsx.default)("modal-title", r);
+  return _react.default.createElement(l, u({
+    className: i
+  }, o, {
+    ref: a
+  }), n);
+});
+
+exports.MDBModalTitle = Ee;
+Ee.defaultProps = {
+  tag: "h5"
+};
+
+var ye = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = f(t, ["className", "children", "tag"]),
+      i = (0, _clsx.default)("modal-body", r);
+  return _react.default.createElement(l, u({
+    className: i
+  }, o, {
+    ref: a
+  }), n);
+});
+
+exports.MDBModalBody = ye;
+ye.defaultProps = {
+  tag: "div"
+};
+
+var ke = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.tag,
+      o = f(t, ["className", "children", "tag"]),
+      i = (0, _clsx.default)("modal-footer", r);
+  return _react.default.createElement(l, u({
+    className: i
+  }, o, {
+    ref: a
+  }), n);
+});
+
+exports.MDBModalFooter = ke;
+ke.defaultProps = {
+  tag: "div"
+};
+
+var Ce = _react.default.forwardRef(function (t, r) {
+  var l = t.className,
+      o = t.offset,
+      c = t.onElement,
+      i = t.setActive,
+      s = t.targets,
+      d = t.tag,
+      m = t.children,
+      p = f(t, ["className", "offset", "onElement", "setActive", "targets", "tag", "children"]),
+      v = (0, _react.useCallback)(function (e) {
+    if (s && o) {
+      var t;
+      t = c ? e.target.scrollTop : window.pageYOffset;
+      var a = s.length - 1;
+      t < s[0].offsetTop && i(0), s.forEach(function (e, a) {
+        var r = s[a + 1];
+        t > e.offsetTop - o && t < (null == r ? void 0 : r.offsetTop) - o && i(a + 1);
+      }), t > s[a].offsetTop - o && i(a + 1);
+    }
+  }, [s, o, c, i]);
+  return (0, _react.useEffect)(function () {
+    if (!c) return window.addEventListener("scroll", v), function () {
+      window.removeEventListener("scroll", v);
+    };
+  }, [s, c, v]), _react.default.createElement(d, u({
+    className: l,
+    ref: r
+  }, p, {
+    onScroll: c ? v : null
+  }), m);
+});
+
+exports.MDBScrollspy = Ce;
+Ce.defaultProps = {
+  tag: "div",
+  onElement: !1,
+  offset: 10
+};
+
+var Re = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.customSelect,
+      l = t.tag,
+      o = t.children,
+      i = f(t, ["className", "customSelect", "tag", "children"]),
+      s = (0, _clsx.default)("scrollspy-section".concat(n), r);
+  return _react.default.createElement(l, u({
+    className: s,
+    ref: a
+  }, i), o);
+});
+
+exports.MDBScrollspySection = Re;
+Re.defaultProps = {
+  tag: "section",
+  customSelect: ""
+};
+
+var Pe = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.tag,
+      l = t.children,
+      o = f(t, ["className", "tag", "children"]),
+      i = (0, _clsx.default)("nav-item", r);
+  return _react.default.createElement(n, u({
+    className: i,
+    ref: a
+  }, o), l);
+});
+
+exports.MDBScrollspyNavItem = Pe;
+Pe.defaultProps = {
+  tag: "li"
+};
+
+var xe = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.collapsible,
+      l = t.scrollElement,
+      o = t.active,
+      i = t.tag,
+      s = t.children,
+      d = f(t, ["className", "collapsible", "scrollElement", "active", "tag", "children"]),
+      m = (0, _clsx.default)("nav-link", n && "collapsible-scrollspy", r, o && "active");
+  return _react.default.createElement(i, u({
+    className: m,
+    ref: a
+  }, d, {
+    onClick: function () {
+      l.scrollIntoView({
+        behavior: "smooth"
+      });
+    },
+    style: {
+      cursor: "pointer"
+    }
+  }), s);
+});
+
+exports.MDBScrollspyNavLink = xe;
+xe.defaultProps = {
+  tag: "a"
+};
+
+var Te = function (n) {
+  var l = n.className,
+      o = n.collapsible,
+      i = n.active,
+      s = n.tag,
+      d = n.children,
+      m = f(n, ["className", "collapsible", "active", "tag", "children"]),
+      p = (0, _clsx.default)("nav", l),
+      v = (0, _react.useState)(0),
+      g = v[0],
+      h = v[1],
+      b = (0, _react.useRef)(null);
+  return (0, _react.useEffect)(function () {
+    var e;
+    b.current && h(null === (e = b.current) || void 0 === e ? void 0 : e.scrollHeight);
+  }, [b]), _react.default.createElement(s, u({
+    className: p,
+    ref: b
+  }, m, {
+    style: {
+      overflow: o && "hidden",
+      height: o && (i ? "".concat(g, "px") : "0px"),
+      transition: o && "height .5s ease",
+      flexWrap: o && "nowrap"
+    }
+  }), d);
+};
+
+exports.MDBScrollspyNavList = Te;
+Te.defaultProps = {
+  tag: "ul"
+};
+
+var Le = _react.default.forwardRef(function (t, a) {
+  var r = f(t, []);
+  return _react.default.createElement(ae, u({
+    toggleSwitch: !0,
+    type: "checkbox",
+    ref: a
+  }, r));
+}),
+    Oe = _react.default.forwardRef(function (a, r) {
+  var n = a.className,
+      l = a.tag,
+      o = a.labelId,
+      i = a.max,
+      s = a.min,
+      d = a.onChange,
+      m = a.onMouseDown,
+      p = a.onMouseUp,
+      v = a.onTouchStart,
+      g = a.onTouchEnd,
+      h = a.labelClass,
+      b = a.value,
+      N = a.label,
+      w = a.id,
+      E = f(a, ["className", "tag", "labelId", "max", "min", "onChange", "onMouseDown", "onMouseUp", "onTouchStart", "onTouchEnd", "labelClass", "value", "label", "id"]),
+      y = (0, _react.useState)(!1),
+      k = y[0],
+      C = y[1],
+      R = (0, _react.useState)(b || 0),
+      P = R[0],
+      x = R[1],
+      T = (0, _react.useState)(100 * (b || 0 - Number(s)) / (Number(i) - Number(s))),
+      L = T[0],
+      O = T[1],
+      S = (0, _clsx.default)("form-range", n),
+      I = (0, _clsx.default)("form-label", h),
+      z = (0, _clsx.default)("thumb", k && "thumb-active");
+  return _react.default.createElement(_react.default.Fragment, null, N && _react.default.createElement("label", {
+    className: I,
+    id: o,
+    htmlFor: w
+  }, N), _react.default.createElement("div", {
+    className: "range"
+  }, _react.default.createElement(l, u({
+    onMouseDown: function (e) {
+      C(!0), m && m(e);
+    },
+    onMouseUp: function (e) {
+      C(!1), p && p(e);
+    },
+    onTouchStart: function (e) {
+      C(!0), v && v(e);
+    },
+    onTouchEnd: function (e) {
+      C(!1), g && g(e);
+    },
+    onChange: function (e) {
+      x(e.target.value), O(100 * (e.target.value - Number(s)) / (Number(i) - Number(s))), d && d(e);
+    },
+    className: S,
+    value: b,
+    type: "range",
+    id: w,
+    ref: r,
+    min: s,
+    max: i
+  }, E)), _react.default.createElement("span", {
+    className: z,
+    style: {
+      left: "calc(".concat(L, "% + (").concat(8 - .15 * L, "px))")
+    }
+  }, _react.default.createElement("span", {
+    className: "thumb-value"
+  }, P))));
+});
+
+exports.MDBRange = Oe;
+exports.MDBSwitch = Le;
+Oe.defaultProps = {
+  tag: "input",
+  min: "0",
+  max: "100"
+};
+
+var Se = function (t) {
+  var a = t.className,
+      n = t.labelId,
+      l = t.labelClass,
+      o = t.labelRef,
+      i = t.inputRef,
+      s = t.size,
+      d = t.label,
+      m = t.id,
+      p = f(t, ["className", "labelId", "labelClass", "labelRef", "inputRef", "size", "label", "id"]),
+      v = (0, _clsx.default)("form-control", "form-control-".concat(s), a),
+      g = (0, _clsx.default)("form-label", l),
+      h = (0, _react.useRef)(null),
+      b = (0, _react.useRef)(null),
+      N = o || h,
+      w = i || b;
+  return _react.default.createElement(_react.default.Fragment, null, d && _react.default.createElement("label", {
+    className: g,
+    id: n,
+    ref: N,
+    htmlFor: m
+  }, d), _react.default.createElement("input", u({
+    className: v,
+    type: "file",
+    id: m,
+    ref: w
+  }, p)));
+},
+    Ie = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.noWrap,
+      o = t.tag,
+      i = t.size,
+      s = f(t, ["className", "children", "noWrap", "tag", "size"]),
+      d = (0, _clsx.default)("input-group", l && "flex-nowrap", i && "input-group-".concat(i), r);
+  return _react.default.createElement(o, u({
+    className: d,
+    ref: a
+  }, s), n);
+});
+
+exports.MDBInputGroup = Ie;
+exports.MDBFile = Se;
+Ie.defaultProps = {
+  tag: "div",
+  noWrap: !1
+};
+
+var ze = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.noBorder,
+      o = t.tag,
+      i = f(t, ["className", "children", "noBorder", "tag"]),
+      s = (0, _clsx.default)("input-group-text", l && "border-0", r);
+  return _react.default.createElement(o, u({
+    className: s,
+    ref: a
+  }, i), n);
+});
+
+exports.MDBInputGroupText = ze;
+ze.defaultProps = {
+  tag: "span",
+  noBorder: !1
+};
+
+var Fe = function (t) {
+  var a = t.className,
+      n = t.textarea,
+      l = t.inputRef,
+      o = f(t, ["className", "textarea", "inputRef"]),
+      i = (0, _clsx.default)("form-control", a),
+      s = (0, _react.useRef)(null),
+      d = l || s;
+  return _react.default.createElement(_react.default.Fragment, null, n ? _react.default.createElement("textarea", u({
+    className: i,
+    ref: d
+  }, o)) : _react.default.createElement("input", u({
+    className: i,
+    ref: d
+  }, o)));
+},
+    Me = function (a) {
+  var n = a.className,
+      l = a.children,
+      o = a.formRef,
+      i = a.isValidated,
+      s = a.onSubmit,
+      d = f(a, ["className", "children", "formRef", "isValidated", "onSubmit"]),
+      m = (0, _react.useRef)(null),
+      p = o || m,
+      v = (0, _react.useState)(i),
+      g = v[0],
+      h = v[1],
+      b = (0, _clsx.default)("needs-validation", g && "was-validated", n);
+  return _react.default.createElement("form", u({
+    className: b,
+    onSubmit: function (e) {
+      e.preventDefault(), h(!0), s && s(e);
+    },
+    ref: p
+  }, d), l);
+},
+    je = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.fill,
+      l = t.pills,
+      o = t.justify,
+      i = t.children,
+      s = f(t, ["className", "fill", "pills", "justify", "children"]),
+      d = (0, _clsx.default)("nav", l ? "nav-pills" : "nav-tabs", n && "nav-fill", o && "nav-justified", r);
+  return _react.default.createElement("ul", u({
+    className: d,
+    ref: a
+  }, s), i);
+}),
+    Ae = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.children,
+      l = t.style,
+      o = f(t, ["className", "children", "style"]),
+      i = (0, _clsx.default)("nav-item", r);
+  return _react.default.createElement("li", u({
+    className: i,
+    style: u({
+      cursor: "pointer"
+    }, l),
+    role: "presentation",
+    ref: a
+  }, o), n);
+}),
+    De = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.color,
+      l = t.active,
+      o = t.children,
+      i = f(t, ["className", "color", "active", "children"]),
+      s = (0, _clsx.default)("nav-link", l && "active", n && "bg-".concat(n), r);
+  return _react.default.createElement("a", u({
+    className: s,
+    ref: a
+  }, i), o);
+}),
+    We = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.tag,
+      l = t.children,
+      o = f(t, ["className", "tag", "children"]),
+      i = (0, _clsx.default)("tab-content", r);
+  return _react.default.createElement(n, u({
+    className: i,
+    ref: a
+  }, o), l);
+});
+
+exports.MDBTabsContent = We;
+exports.MDBTabsLink = De;
+exports.MDBTabsItem = Ae;
+exports.MDBTabs = je;
+exports.MDBValidation = Me;
+exports.MDBInputGroupElement = Fe;
+We.defaultProps = {
+  tag: "div"
+};
+
+var Be = _react.default.forwardRef(function (r, n) {
+  var l = r.className,
+      o = r.tag,
+      i = r.show,
+      s = r.children,
+      d = f(r, ["className", "tag", "show", "children"]),
+      m = (0, _react.useState)(!1),
+      p = m[0],
+      v = m[1],
+      g = (0, _clsx.default)("tab-pane", "fade", p && "show", i && "active", l);
+  return (0, _react.useEffect)(function () {
+    var e;
+    return i ? e = setTimeout(function () {
+      v(!0);
+    }, 100) : v(!1), function () {
+      clearTimeout(e);
+    };
+  }, [i]), _react.default.createElement(o, u({
+    className: g,
+    role: "tabpanel",
+    ref: n
+  }, d), s);
+});
+
+exports.MDBTabsPane = Be;
+Be.defaultProps = {
+  tag: "div"
+};
+
+var Ye = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.direction,
+      l = t.tag,
+      o = f(t, ["className", "direction", "tag"]),
+      i = (0, _clsx.default)("carousel-control-".concat(n), r);
+  return _react.default.createElement(l, u({
+    role: "button",
+    className: i,
+    ref: a
+  }, o), _react.default.createElement("span", {
+    className: "carousel-control-".concat(n, "-icon")
+  }), "prev" === n ? _react.default.createElement("span", {
+    className: "visually-hidden"
+  }, "Previous") : _react.default.createElement("span", {
+    className: "visually-hidden"
+  }, "Next"));
+});
+
+Ye.defaultProps = {
+  tag: "a"
+};
+
+var qe = _react.default.forwardRef(function (t, a) {
+  var r = t.active,
+      n = t.className,
+      l = t.tag,
+      o = f(t, ["active", "className", "tag"]),
+      i = (0, _clsx.default)(r && "active", n);
+  return _react.default.createElement(l, u({
+    className: i,
+    ref: a
+  }, o));
+});
+
+qe.defaultProps = {
+  tag: "li"
+};
+
+var Xe = function (e) {
+  "function" == typeof e && e();
+},
+    Ue = function (e) {
+  if (!e) return 0;
+  var t = window.getComputedStyle(e),
+      a = t.transitionDuration,
+      r = t.transitionDelay,
+      n = Number.parseFloat(a),
+      l = Number.parseFloat(r);
+  return n || l ? (a = a.split(",")[0], r = r.split(",")[0], 1e3 * (Number.parseFloat(a) + Number.parseFloat(r))) : 0;
+},
+    Ve = function (e, t) {
+  var a = !1,
+      r = t + 5;
+  e.addEventListener("transitionend", function t() {
+    a = !0, e.removeEventListener("transitionend", t);
+  }), setTimeout(function () {
+    a || function (e) {
+      e.dispatchEvent(new Event("transitionend"));
+    }(e);
+  }, r);
+},
+    He = function (l) {
+  var o = l.fade,
+      i = l.className,
+      s = l.dark,
+      d = l.children,
+      m = l.carouselRef,
+      p = l.interval,
+      v = l.keyboard,
+      g = l.touch,
+      h = l.tag,
+      b = l.showControls,
+      N = l.showIndicators,
+      w = f(l, ["fade", "className", "dark", "children", "carouselRef", "interval", "keyboard", "touch", "tag", "showControls", "showIndicators"]),
+      E = (0, _react.useRef)(null),
+      y = (0, _react.useRef)(null),
+      k = (0, _react.useRef)(null),
+      C = (0, _react.useRef)(!1),
+      R = (0, _react.useRef)(!1),
+      P = (0, _react.useRef)(!1),
+      x = (0, _react.useState)(0),
+      T = x[0],
+      L = x[1],
+      O = (0, _react.useState)(0),
+      S = O[0],
+      I = O[1],
+      z = (0, _react.useState)({
+    initialX: 0,
+    initialY: 0
+  }),
+      F = z[0],
+      M = z[1],
+      j = (0, _react.useRef)(null),
+      A = m || j,
+      D = (0, _clsx.default)("carousel", "slide", o && "carousel-fade", s && "carousel-dark", i),
+      W = function (e) {
+    return ["right", "left"].includes(e) ? "rtl" === document.documentElement.dir ? "left" === e ? "prev" : "next" : "left" === e ? "next" : "prev" : e;
+  },
+      B = (0, _react.useCallback)(function (e) {
+    var t;
+    return E.current = e && e.parentNode ? Array.from(A.current.querySelectorAll(".carousel-item", e.parentNode)) : [], null === (t = E.current) || void 0 === t ? void 0 : t.indexOf(e);
+  }, [A]),
+      Y = function () {
+    y.current && (clearInterval(y.current), y.current = null);
+  },
+      q = (0, _react.useCallback)(function (e, t) {
+    var a,
+        r,
+        n = "prev" === e,
+        l = (B(t) + (n ? -1 : 1)) % (null === (a = E.current) || void 0 === a ? void 0 : a.length),
+        o = E.current;
+    if (o) return -1 === l ? o[(null === (r = E.current) || void 0 === r ? void 0 : r.length) - 1] : o[l];
+  }, [B]),
+      X = (0, _react.useCallback)(function (e) {
+    L("next" === e ? T === S - 1 ? 0 : T + 1 : 0 === T ? S - 1 : T - 1);
+  }, [T, S]),
+      U = (0, _react.useCallback)(function (e, t) {
+    var a = W(e),
+        r = A.current.querySelector(".active.carousel-item"),
+        n = t || q(a, r),
+        l = Boolean(y.current),
+        o = "next" === a,
+        c = o ? "carousel-item-start" : "carousel-item-end",
+        i = o ? "carousel-item-next" : "carousel-item-prev";
+    if (n && n.classList.contains("active")) R.current = !1;else if (null === t && X(a), r && n) if (R.current = !0, l && Y(), r.current = n, A.current.classList.contains("slide")) {
+      n.classList.add(i), function (e) {
+        e.offsetHeight;
+      }(n), r.classList.add(c), n.classList.add(c);
+      !function (e, t, a) {
+        if (void 0 === a && (a = !0), a) {
+          var r = Ue(t);
+          t.addEventListener("transitionend", function () {
+            return Xe(e);
+          }, {
+            once: !0
+          }), Ve(t, r);
+        } else Xe(e);
+      }(function () {
+        n.classList.remove(c, i), n.classList.add("active"), r.classList.remove("active", i, c), R.current = !1;
+      }, r, !0);
+    } else r.classList.remove("active"), n.classList.add("active"), R.current = !1;
+  }, [A, q, X]),
+      V = (0, _react.useCallback)(function () {
+    R.current || U("next", null);
+  }, [U]),
+      H = (0, _react.useCallback)(function () {
+    !document.hidden && function (e) {
+      if (!e) return !1;
+
+      if (e.style && e.parentNode && e.parentNode.style) {
+        var t = getComputedStyle(e),
+            a = getComputedStyle(e.parentNode);
+        return "none" !== t.display && "none" !== a.display && "hidden" !== t.visibility;
+      }
+
+      return !1;
+    }(A.current) && V();
+  }, [V, A]),
+      G = (0, _react.useCallback)(function () {
+    y.current && (clearInterval(y.current), y.current = null), y.current = setInterval(document.visibilityState ? H : V, p);
+  }, [V, H, p]),
+      J = (0, _react.useCallback)(function (e) {
+    switch (e.key) {
+      case "ArrowLeft":
+        e.preventDefault(), U("right", null);
+        break;
+
+      case "ArrowRight":
+        e.preventDefault(), U("left", null);
+    }
+  }, [U]);
+
+  (0, _react.useEffect)(function () {
+    var e = A.current.querySelectorAll(".carousel-item").length;
+    I(e);
+  }, [A]), (0, _react.useEffect)(function () {
+    if (v) return document.addEventListener("keydown", J), function () {
+      document.removeEventListener("keydown", J);
+    };
+  }, [J, v]), (0, _react.useEffect)(function () {
+    G();
+  }, [G]);
+
+  var K = function (e) {
+    C.current || (C.current = !0, setTimeout(function () {
+      C.current = !1;
+    }, 600), U(e, null));
+  };
+
+  return _react.default.createElement(h, u({
+    onTouchStart: function (e) {
+      g && M({
+        initialX: e.touches[0].clientX,
+        initialY: e.touches[0].clientY
+      });
+    },
+    onTouchMove: P.current ? null : function (e) {
+      P.current = !0;
+      var t = F.initialX,
+          a = F.initialY;
+
+      if (t && a) {
+        var r = t - e.touches[0].clientX,
+            n = a - e.touches[0].clientY;
+        Math.abs(r) > Math.abs(n) && U(r > 0 ? "left" : "right", null), M({
+          initialX: 0,
+          initialY: 0
+        });
+      }
+    },
+    onTouchEnd: function () {
+      return P.current = !1;
+    },
+    onMouseEnter: Y,
+    onMouseLeave: G,
+    className: D,
+    ref: A
+  }, w), N && _react.default.createElement("ol", {
+    className: "carousel-indicators"
+  }, Array.from(Array(S)).map(function (t, a) {
+    return _react.default.createElement(qe, {
+      key: a,
+      active: T === a,
+      onClick: function () {
+        return function (e) {
+          var t;
+
+          if (!C.current) {
+            C.current = !0, setTimeout(function () {
+              C.current = !1;
+            }, 700), k.current = A.current.querySelector(".active.carousel-item");
+            var a = B(k.current);
+
+            if (L(e), !(e > (null === (t = E.current) || void 0 === t ? void 0 : t.length) - 1 || e < 0)) {
+              var r = e > a ? "next" : "prev";
+              E.current && U(r, E.current[e]);
+            }
+          }
+        }(a);
+      }
+    });
+  })), d, b && _react.default.createElement(_react.default.Fragment, null, _react.default.createElement(Ye, {
+    direction: "prev",
+    onClick: function () {
+      return K("right");
+    }
+  }), _react.default.createElement(Ye, {
+    direction: "next",
+    onClick: function () {
+      return K("left");
+    }
+  })));
+};
+
+exports.MDBCarousel = He;
+He.defaultProps = {
+  tag: "div",
+  fade: !1,
+  interval: 5e3,
+  touch: !0,
+  keyboard: !1
+};
+
+var Ge = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.tag,
+      l = t.children,
+      o = f(t, ["className", "tag", "children"]),
+      i = (0, _clsx.default)("carousel-inner", r);
+  return _react.default.createElement(n, u({
+    className: i,
+    ref: a
+  }, o), l);
+});
+
+exports.MDBCarouselInner = Ge;
+Ge.defaultProps = {
+  tag: "div"
+};
+
+var Je = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.tag;
+  t.children;
+  var l = f(t, ["className", "tag", "children"]),
+      o = (0, _clsx.default)("d-block", "w-100", r);
+  return _react.default.createElement(n, u({
+    className: o,
+    ref: a
+  }, l));
+});
+
+exports.MDBCarouselElement = Je;
+Je.defaultProps = {
+  tag: "img"
+};
+
+var Ke = _react.default.forwardRef(function (t, a) {
+  var r = t.className,
+      n = t.tag,
+      l = t.children,
+      o = f(t, ["className", "tag", "children"]),
+      i = (0, _clsx.default)("carousel-caption", "d-none", "d-md-block", r);
+  return _react.default.createElement(n, u({
+    className: i,
+    ref: a
+  }, o), l);
+});
+
+exports.MDBCarouselCaption = Ke;
+Ke.defaultProps = {
+  tag: "div"
+};
+
+var Qe = function (t) {
+  var a = t.carouselRef,
+      n = t.className,
+      l = t.tag,
+      o = t.children,
+      i = f(t, ["carouselRef", "className", "tag", "children"]),
+      s = (0, _react.useRef)(null),
+      d = a || s,
+      m = (0, _clsx.default)("carousel-item", n);
+  return _react.default.createElement(l, u({
+    className: m,
+    ref: d
+  }, i), o);
+};
+
+exports.MDBCarouselItem = Qe;
+Qe.defaultProps = {
+  tag: "div"
+};
+
+var Ze = _react.default.createContext({
+  activeItem: "",
+  setActiveItem: null,
+  alwaysOpen: !1,
+  initialActive: ""
+}),
+    $e = _react.default.forwardRef(function (a, r) {
+  var n = a.alwaysOpen,
+      l = a.className,
+      o = a.flush,
+      i = a.initialActive,
+      s = a.tag,
+      d = a.children,
+      m = f(a, ["alwaysOpen", "className", "flush", "initialActive", "tag", "children"]),
+      p = (0, _clsx.default)("accordion", o && "accordion-flush", l),
+      v = (0, _react.useState)(i),
+      g = v[0],
+      h = v[1];
+  return _react.default.createElement(Ze.Provider, {
+    value: {
+      activeItem: g,
+      setActiveItem: h,
+      alwaysOpen: n,
+      initialActive: i
+    }
+  }, _react.default.createElement(s, u({
+    className: p,
+    ref: r
+  }, m), d));
+});
+
+exports.MDBAccordion = $e;
+$e.defaultProps = {
+  tag: "div",
+  initialActive: ""
+};
+
+var _e = _react.default.forwardRef(function (a, r) {
+  var n = a.className,
+      l = a.bodyClassName,
+      i = a.headerClassName,
+      s = a.collapseId,
+      d = a.headerTitle,
+      m = a.tag,
+      p = a.children,
+      v = f(a, ["className", "bodyClassName", "headerClassName", "collapseId", "headerTitle", "tag", "children"]),
+      g = (0, _react.useContext)(Ze),
+      h = g.activeItem,
+      b = g.setActiveItem,
+      N = g.alwaysOpen,
+      w = g.initialActive,
+      E = (0, _react.useState)(w),
+      y = E[0],
+      k = E[1],
+      C = (0, _clsx.default)("accordion-item", n),
+      R = (0, _clsx.default)("accordion-header", i),
+      P = (0, _clsx.default)("accordion-body", l),
+      x = (0, _clsx.default)("accordion-button", N ? s !== y && "collapsed" : s !== h && "collapsed");
+  return _react.default.createElement(m, u({
+    className: C,
+    ref: r
+  }, v), _react.default.createElement("h2", {
+    className: R
+  }, _react.default.createElement("button", {
+    onClick: function () {
+      return e = s, void (N ? k(e !== y ? e : "") : b(e !== h ? e : ""));
+      var e;
+    },
+    className: x,
+    type: "button"
+  }, d)), _react.default.createElement(ne, {
+    id: s,
+    show: N ? y : h
+  }, _react.default.createElement("div", {
+    className: P
+  }, p)));
+});
+
+exports.MDBAccordionItem = _e;
+_e.defaultProps = {
+  tag: "div"
+};
+},{"react":"../node_modules/react/index.js","clsx":"../node_modules/clsx/dist/clsx.m.js","react-dom":"../node_modules/react-dom/index.js","react-popper":"../node_modules/mdb-react-ui-kit/node_modules/react-popper/lib/esm/index.js","@popperjs/core":"../node_modules/mdb-react-ui-kit/node_modules/@popperjs/core/lib/index.js"}],"App.js":[function(require,module,exports) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -66347,10 +76275,13 @@ var _Metadata = _interopRequireDefault(require("./Components/Metadata"));
 
 var _SendTokens = _interopRequireDefault(require("./Components/SendTokens"));
 
+var _mdbReactUiKit = require("mdb-react-ui-kit");
+
 var _config = _interopRequireDefault(require("./config"));
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
+//added by fry 
 const {
   networkId
 } = (0, _config.default)("development" || 'development');
@@ -66373,13 +76304,39 @@ function App() {
     className: "d-flex justify-content-center"
   }, /*#__PURE__*/_react.default.createElement(_Metadata.default, null)), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Row, {
     className: "d-flex justify-content-center"
-  }, /*#__PURE__*/_react.default.createElement(_SendTokens.default, null))) : /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card, null, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Header, {
+  }, /*#__PURE__*/_react.default.createElement(_SendTokens.default, null))) : /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card, {
+    class: "card",
+    style: {
+      width: '30%',
+      margin: 'auto',
+      marginTop: '200px',
+      opacity: '0.65'
+    }
+  }, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Header, {
     as: "h5"
-  }, "Hello User!"), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Body, null, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Title, null, " Please Login"), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Text, null, "This app will not work if you are not Logged, Sorry"), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Button, {
+  }, "Hello User!"), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Body, null, /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Title, null, " Please Login"), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Card.Text, null, "This app will not work if you are not Logged."), /*#__PURE__*/_react.default.createElement(_reactBootstrap.Button, {
     onClick: _utils.login
-  }, "Login Now"))));
+  }, "Login Now"))), /*#__PURE__*/_react.default.createElement(_mdbReactUiKit.MDBFooter, {
+    backgroundColor: "light",
+    className: "text-center text-lg-left"
+  }, /*#__PURE__*/_react.default.createElement("div", {
+    className: "text-center p-3",
+    style: {
+      backgroundColor: 'rgba(22,22,22,0.7)',
+      color: 'white',
+      position: 'fixed',
+      bottom: '0px',
+      width: '100%',
+      marginTop: '30%',
+      paddingTop: '30px',
+      height: '50px'
+    }
+  }, "\xA9 ", new Date().getFullYear(), ' ', /*#__PURE__*/_react.default.createElement("a", {
+    className: "text-light",
+    href: ""
+  }, "Block-Transfer"))));
 }
-},{"regenerator-runtime/runtime":"../node_modules/regenerator-runtime/runtime.js","react":"../node_modules/react/index.js","./utils":"utils.js","./global.css":"global.css","bootstrap/dist/css/bootstrap.min.css":"../node_modules/bootstrap/dist/css/bootstrap.min.css","./scss/AppStyles.scss":"scss/AppStyles.scss","react-bootstrap":"../node_modules/react-bootstrap/esm/index.js","./Components/Metadata":"Components/Metadata.js","./Components/SendTokens":"Components/SendTokens.js","./config":"config.js"}],"index.js":[function(require,module,exports) {
+},{"regenerator-runtime/runtime":"../node_modules/regenerator-runtime/runtime.js","react":"../node_modules/react/index.js","./utils":"utils.js","./global.css":"global.css","bootstrap/dist/css/bootstrap.min.css":"../node_modules/bootstrap/dist/css/bootstrap.min.css","./scss/AppStyles.scss":"scss/AppStyles.scss","react-bootstrap":"../node_modules/react-bootstrap/esm/index.js","./Components/Metadata":"Components/Metadata.js","./Components/SendTokens":"Components/SendTokens.js","mdb-react-ui-kit":"../node_modules/mdb-react-ui-kit/dist/mdb-react-ui-kit.esm.js","./config":"config.js"}],"index.js":[function(require,module,exports) {
 "use strict";
 
 var _react = _interopRequireDefault(require("react"));
@@ -66423,7 +76380,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "50303" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "58707" + '/');
 
   ws.onmessage = function (event) {
     checkedAssets = {};

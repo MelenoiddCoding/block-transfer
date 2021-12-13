@@ -1,4 +1,6 @@
 import React, {useState, useEffect} from 'react';
+import { main } from '/utils.js'
+
 import PropTypes from 'prop-types';
 import { async } from 'regenerator-runtime';
 import { Container, Row,Col,Card,ListGroup, ListGroupItem, Button, Table} from 'react-bootstrap';
@@ -17,10 +19,15 @@ const SendTokens = props => {
         let getState=await window.account.state();
         let getAmount = await window.utils.format.formatNearAmount(getState.amount)
         let enteredValue = ValueInput.current.value
+            
 
         if(Number(getAmount)>Number(enteredValue)){
+           
             await window.account.sendMoney(Recipient.current.value, window.utils.format.parseNearAmount(enteredValue))
+            
+
             .then(
+                
                 await window.contract.addFunds({recipient:Recipient.current.value, amount:Number(enteredValue)})
             )
             .then(
@@ -107,7 +114,7 @@ const SendTokens = props => {
                                 </Col>
                                 <Col>
                                 <Button onClick={sendGift}>
-                                        Submit
+                                        Send Money
                                 </Button>
                                 </Col>
                             </Row>
